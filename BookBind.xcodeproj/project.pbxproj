@@ -1,0 +1,449 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2B69A42A266E7F660948190D /* PageDecorationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5725EB8A66CB82DB2A6BA6 /* PageDecorationService.swift */; };
+		40446DE66B07ABA30AEE3CD9 /* BookBindApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0C40EA93886B5E5D71A60F /* BookBindApp.swift */; };
+		66AD2D05F110E5DA4F8A06B8 /* PDFKitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D553EC384B86F5D10978304 /* PDFKitView.swift */; };
+		6C0D1C146274A16752049767 /* BindingWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC5A18BE152FEC9067F1DC3 /* BindingWorkspace.swift */; };
+		6CFDE1C9DA19D8FED7800E79 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253337E8D4F43D3ED6EFC539 /* ContentView.swift */; };
+		887D4488C0C57A439FD87ABF /* BindingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF66181627B85E08C9DE8854 /* BindingModels.swift */; };
+		89631FE88607036FFB97E67E /* ImpositionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F53C094760E197C4C4E4A7 /* ImpositionService.swift */; };
+		D81DAAD59CB9AC8BC0928C26 /* ImpositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B03922E451EFAD255E4B181 /* ImpositionTests.swift */; };
+		F0291EFEDCDB09FA0EC7C986 /* PDFDocumentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E4EA5601D8889DF073F939F /* PDFDocumentService.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4A001532BD5F89429FFC9A20 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A72BB952254F48E5422507DE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B88FCA3928CB2A5CA1386228;
+			remoteInfo = BookBind;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		253337E8D4F43D3ED6EFC539 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		2D18CD0F82B63693D77E7DF0 /* BookBind.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BookBind.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3196599CDA9251896DC68032 /* BookBindTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BookBindTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D553EC384B86F5D10978304 /* PDFKitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFKitView.swift; sourceTree = "<group>"; };
+		67F53C094760E197C4C4E4A7 /* ImpositionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpositionService.swift; sourceTree = "<group>"; };
+		6B03922E451EFAD255E4B181 /* ImpositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpositionTests.swift; sourceTree = "<group>"; };
+		8D0C40EA93886B5E5D71A60F /* BookBindApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBindApp.swift; sourceTree = "<group>"; };
+		9D5725EB8A66CB82DB2A6BA6 /* PageDecorationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageDecorationService.swift; sourceTree = "<group>"; };
+		9E4EA5601D8889DF073F939F /* PDFDocumentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentService.swift; sourceTree = "<group>"; };
+		BAC5A18BE152FEC9067F1DC3 /* BindingWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingWorkspace.swift; sourceTree = "<group>"; };
+		EF66181627B85E08C9DE8854 /* BindingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingModels.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		29746EAF5B6BFA3D35A360A5 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				BAC5A18BE152FEC9067F1DC3 /* BindingWorkspace.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		47C24161FF7D054DD2BCBFD4 = {
+			isa = PBXGroup;
+			children = (
+				70EF3E879D32B6B7D0EFC5AB /* BookBind */,
+				CB724BE7777D7D1826D31B91 /* BookBindTests */,
+				71412E1A817DF6F2ED0737A7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		70EF3E879D32B6B7D0EFC5AB /* BookBind */ = {
+			isa = PBXGroup;
+			children = (
+				8D0C40EA93886B5E5D71A60F /* BookBindApp.swift */,
+				B52BC8F22F8A1522A73CCCFF /* Models */,
+				E658B140BE9A3B7418C16919 /* Services */,
+				29746EAF5B6BFA3D35A360A5 /* ViewModels */,
+				83844E8871DA836DBACA9360 /* Views */,
+			);
+			path = BookBind;
+			sourceTree = "<group>";
+		};
+		71412E1A817DF6F2ED0737A7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2D18CD0F82B63693D77E7DF0 /* BookBind.app */,
+				3196599CDA9251896DC68032 /* BookBindTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		83844E8871DA836DBACA9360 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				253337E8D4F43D3ED6EFC539 /* ContentView.swift */,
+				5D553EC384B86F5D10978304 /* PDFKitView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		B52BC8F22F8A1522A73CCCFF /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				EF66181627B85E08C9DE8854 /* BindingModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		CB724BE7777D7D1826D31B91 /* BookBindTests */ = {
+			isa = PBXGroup;
+			children = (
+				6B03922E451EFAD255E4B181 /* ImpositionTests.swift */,
+			);
+			path = BookBindTests;
+			sourceTree = "<group>";
+		};
+		E658B140BE9A3B7418C16919 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				67F53C094760E197C4C4E4A7 /* ImpositionService.swift */,
+				9D5725EB8A66CB82DB2A6BA6 /* PageDecorationService.swift */,
+				9E4EA5601D8889DF073F939F /* PDFDocumentService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5ADDD961931C41AFDF24C4CD /* BookBindTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C76425EA9A5AB86FC3F25BB4 /* Build configuration list for PBXNativeTarget "BookBindTests" */;
+			buildPhases = (
+				11DF5674D34F5B57451E52A5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				38FE8C7108010398D8695E3C /* PBXTargetDependency */,
+			);
+			name = BookBindTests;
+			packageProductDependencies = (
+			);
+			productName = BookBindTests;
+			productReference = 3196599CDA9251896DC68032 /* BookBindTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B88FCA3928CB2A5CA1386228 /* BookBind */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9A44C08ECC0231268897C5C2 /* Build configuration list for PBXNativeTarget "BookBind" */;
+			buildPhases = (
+				2118E6F5463D3B828333CD6F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BookBind;
+			packageProductDependencies = (
+			);
+			productName = BookBind;
+			productReference = 2D18CD0F82B63693D77E7DF0 /* BookBind.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A72BB952254F48E5422507DE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = C31BF6AD98A7C8004B4DEA65 /* Build configuration list for PBXProject "BookBind" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 47C24161FF7D054DD2BCBFD4;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 71412E1A817DF6F2ED0737A7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B88FCA3928CB2A5CA1386228 /* BookBind */,
+				5ADDD961931C41AFDF24C4CD /* BookBindTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		11DF5674D34F5B57451E52A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D81DAAD59CB9AC8BC0928C26 /* ImpositionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2118E6F5463D3B828333CD6F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				887D4488C0C57A439FD87ABF /* BindingModels.swift in Sources */,
+				6C0D1C146274A16752049767 /* BindingWorkspace.swift in Sources */,
+				40446DE66B07ABA30AEE3CD9 /* BookBindApp.swift in Sources */,
+				6CFDE1C9DA19D8FED7800E79 /* ContentView.swift in Sources */,
+				89631FE88607036FFB97E67E /* ImpositionService.swift in Sources */,
+				F0291EFEDCDB09FA0EC7C986 /* PDFDocumentService.swift in Sources */,
+				66AD2D05F110E5DA4F8A06B8 /* PDFKitView.swift in Sources */,
+				2B69A42A266E7F660948190D /* PageDecorationService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		38FE8C7108010398D8695E3C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B88FCA3928CB2A5CA1386228 /* BookBind */;
+			targetProxy = 4A001532BD5F89429FFC9A20 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		8C6B287C2667E611ADC35728 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_ENTITLEMENTS = BookBind/BookBind.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BookBind/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.app;
+				PRODUCT_NAME = BookBind;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		A28B2D35AA39FD6FEDE88516 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		B3FA3C68F029D8E64A3BC8D1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BookBind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BookBind";
+			};
+			name = Debug;
+		};
+		CA03AED4492B104810555A3B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BookBind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BookBind";
+			};
+			name = Release;
+		};
+		DA4F011A22E0500D2D440EE1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		F413476E3689660DC3BFAF1D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_ENTITLEMENTS = BookBind/BookBind.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BookBind/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.app;
+				PRODUCT_NAME = BookBind;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9A44C08ECC0231268897C5C2 /* Build configuration list for PBXNativeTarget "BookBind" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8C6B287C2667E611ADC35728 /* Debug */,
+				F413476E3689660DC3BFAF1D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C31BF6AD98A7C8004B4DEA65 /* Build configuration list for PBXProject "BookBind" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA4F011A22E0500D2D440EE1 /* Debug */,
+				A28B2D35AA39FD6FEDE88516 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C76425EA9A5AB86FC3F25BB4 /* Build configuration list for PBXNativeTarget "BookBindTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B3FA3C68F029D8E64A3BC8D1 /* Debug */,
+				CA03AED4492B104810555A3B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A72BB952254F48E5422507DE /* Project object */;
+}

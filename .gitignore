@@ -1,0 +1,8 @@
+# BookBind
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+.build/
+*.dmg
+.DS_Store
+*.swiftpm/

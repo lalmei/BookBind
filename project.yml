@@ -1,0 +1,58 @@
+name: BookBind
+options:
+  bundleIdPrefix: com.bookbind
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+targets:
+  BookBind:
+    type: application
+    platform: macOS
+    sources:
+      - path: BookBind
+        excludes:
+          - Info.plist
+          - BookBind.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bookbind.app
+        PRODUCT_NAME: BookBind
+        INFOPLIST_FILE: BookBind/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BookBind/BookBind.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        COMBINE_HIDPI_IMAGES: true
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        ENABLE_HARDENED_RUNTIME: true
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_ALLOWED: true
+  BookBindTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: BookBindTests
+    dependencies:
+      - target: BookBind
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bookbind.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BookBind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BookBind"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  BookBind:
+    build:
+      targets:
+        BookBind: all
+        BookBindTests: [test]
+    test:
+      targets:
+        - BookBindTests
+    run:
+      config: Debug
