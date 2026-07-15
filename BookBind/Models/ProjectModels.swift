@@ -94,6 +94,23 @@ enum CoverElementLayer: String, CaseIterable, Identifiable, Codable, Hashable {
         case .deboss: return "Deboss"
         }
     }
+
+    /// One-letter badge for the layers list.
+    var badge: String {
+        switch self {
+        case .ink: return "I"
+        case .foil: return "F"
+        case .deboss: return "D"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .ink: return "paintbrush"
+        case .foil: return "sparkles"
+        case .deboss: return "square.3.layers.3d.down.left"
+        }
+    }
 }
 
 enum CoverFontStyle: String, CaseIterable, Identifiable, Codable, Hashable {
@@ -124,6 +141,7 @@ enum CoverFontStyle: String, CaseIterable, Identifiable, Codable, Hashable {
 enum CoverElementKind: String, CaseIterable, Identifiable, Codable, Hashable {
     case text
     case image
+    case shape
 
     var id: String { rawValue }
 
@@ -131,30 +149,130 @@ enum CoverElementKind: String, CaseIterable, Identifiable, Codable, Hashable {
         switch self {
         case .text: return "Text"
         case .image: return "Image"
+        case .shape: return "Shape"
         }
     }
 }
 
-/// Named stack layer in the cover editor (visibility / ordering group).
+/// Vector primitives for panels, borders, and tooling motifs (emboss/foil/ink).
+enum CoverShapeType: String, CaseIterable, Identifiable, Codable, Hashable {
+    case rectangle
+    case ellipse
+    case line
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .rectangle: return "Rectangle"
+        case .ellipse: return "Ellipse"
+        case .line: return "Line"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .rectangle: return "rectangle"
+        case .ellipse: return "circle"
+        case .line: return "line.diagonal"
+        }
+    }
+}
+
+/// Border brush for shape outlines — plain rules, tooling dots, or ornament patterns.
+enum CoverStrokeStyle: String, CaseIterable, Identifiable, Codable, Hashable {
+    case solid
+    case dashed
+    case dotted
+    case double
+    case chain
+    case ornament
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .solid: return "Solid"
+        case .dashed: return "Dashed"
+        case .dotted: return "Dotted"
+        case .double: return "Double"
+        case .chain: return "Chain"
+        case .ornament: return "Ornament"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .solid: return "Continuous rule"
+        case .dashed: return "Even dashes"
+        case .dotted: return "Round tooling dots"
+        case .double: return "Parallel fillet lines"
+        case .chain: return "Interlocking dash rhythm for panel borders"
+        case .ornament: return "Dash–dot gouge pattern with accent marks"
+        }
+    }
+
+    /// Dash pattern in millimeters (empty = continuous). Shared by canvas, SVG, and PDF.
+    func dashPatternMM(strokeWidthMM: Double) -> [Double] {
+        let width = max(0.2, strokeWidthMM)
+        switch self {
+        case .solid, .double:
+            return []
+        case .dashed:
+            return [width * 4, width * 2]
+        case .dotted:
+            return [0.01, width * 2.5]
+        case .chain:
+            return [width * 3, width * 1.5, width * 3, width * 1.5]
+        case .ornament:
+            // Dash–dot tooling rhythm, reminiscent of gouge-and-pallet borders.
+            return [width * 5, width * 2, 0.01, width * 2]
+        }
+    }
+
+    var usesRoundCap: Bool {
+        switch self {
+        case .dotted, .ornament, .chain: return true
+        case .solid, .dashed, .double: return false
+        }
+    }
+
+    /// Adds a second, inset stroke (classic double fillet rule).
+    var isDoubleStroke: Bool { self == .double }
+
+    /// Renders accent marks along the stroke (tooled borders).
+    var drawsOrnamentMarks: Bool { self == .ornament }
+}
+
+/// Named stack layer in the cover editor (visibility / lock / ordering group).
 struct CoverDesignLayer: Identifiable, Equatable, Codable, Hashable {
     var id: UUID
     var name: String
     var isVisible: Bool
+    /// Locked layers render but their elements can't be selected or moved.
+    var isLocked: Bool
     var zIndex: Int
 
-    init(id: UUID = UUID(), name: String, isVisible: Bool = true, zIndex: Int = 0) {
+    init(id: UUID = UUID(), name: String, isVisible: Bool = true, isLocked: Bool = false, zIndex: Int = 0) {
         self.id = id
         self.name = name
         self.isVisible = isVisible
+        self.isLocked = isLocked
         self.zIndex = zIndex
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
+        isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+        zIndex = try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
+    }
+
+    /// Minimal starting stack — a single working layer; users add more as needed.
     static func defaults() -> [CoverDesignLayer] {
-        [
-            CoverDesignLayer(name: "Artwork", zIndex: 0),
-            CoverDesignLayer(name: "Typography", zIndex: 1),
-            CoverDesignLayer(name: "Finishing", zIndex: 2)
-        ]
+        [CoverDesignLayer(name: "Layer 1", zIndex: 0)]
     }
 }
 
@@ -183,6 +301,11 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
     var usesWrapCoordinates: Bool
     /// When true, drag/placement clamps to `panel`. When false, free across the full wrap.
     var isPanelLocked: Bool
+    /// Shape-only styling (ignored for text / image).
+    var shapeType: CoverShapeType
+    var strokeWidthMM: Double
+    var strokeStyle: CoverStrokeStyle
+    var isFilled: Bool
     var imageBookmarkData: Data?
     var imagePathHint: String?
     var imageName: String
@@ -205,6 +328,10 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         isVisible: Bool = true,
         usesWrapCoordinates: Bool = true,
         isPanelLocked: Bool = false,
+        shapeType: CoverShapeType = .rectangle,
+        strokeWidthMM: Double = 0.8,
+        strokeStyle: CoverStrokeStyle = .solid,
+        isFilled: Bool = false,
         imageBookmarkData: Data? = nil,
         imagePathHint: String? = nil,
         imageName: String = ""
@@ -226,6 +353,10 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         self.isVisible = isVisible
         self.usesWrapCoordinates = usesWrapCoordinates
         self.isPanelLocked = isPanelLocked
+        self.shapeType = shapeType
+        self.strokeWidthMM = strokeWidthMM
+        self.strokeStyle = strokeStyle
+        self.isFilled = isFilled
         self.imageBookmarkData = imageBookmarkData
         self.imagePathHint = imagePathHint
         self.imageName = imageName
@@ -251,6 +382,10 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         // Legacy elements were panel-local and implicitly locked to a panel.
         usesWrapCoordinates = try container.decodeIfPresent(Bool.self, forKey: .usesWrapCoordinates) ?? false
         isPanelLocked = try container.decodeIfPresent(Bool.self, forKey: .isPanelLocked) ?? true
+        shapeType = try container.decodeIfPresent(CoverShapeType.self, forKey: .shapeType) ?? .rectangle
+        strokeWidthMM = try container.decodeIfPresent(Double.self, forKey: .strokeWidthMM) ?? 0.8
+        strokeStyle = try container.decodeIfPresent(CoverStrokeStyle.self, forKey: .strokeStyle) ?? .solid
+        isFilled = try container.decodeIfPresent(Bool.self, forKey: .isFilled) ?? false
         imageBookmarkData = try container.decodeIfPresent(Data.self, forKey: .imageBookmarkData)
         imagePathHint = try container.decodeIfPresent(String.self, forKey: .imagePathHint)
         imageName = try container.decodeIfPresent(String.self, forKey: .imageName) ?? ""
@@ -281,6 +416,16 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
             return trimmed.isEmpty ? "Text" : trimmed
         case .image:
             return imageName.isEmpty ? "Image" : imageName
+        case .shape:
+            return shapeType.title
+        }
+    }
+
+    var listIconName: String {
+        switch kind {
+        case .text: return "textformat"
+        case .image: return "photo"
+        case .shape: return shapeType.systemImage
         }
     }
 
@@ -294,8 +439,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         title: String,
         author: String,
         geometry: CoverBlueprintService.Geometry,
-        typographyLayerID: UUID,
-        finishingLayerID: UUID
+        layerID: UUID
     ) -> [CoverDesignElement] {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -321,7 +465,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
                     fontSizeMM: fontSize,
                     layer: .foil,
                     fontStyle: .display,
-                    designLayerID: finishingLayerID,
+                    designLayerID: layerID,
                     usesWrapCoordinates: true,
                     isPanelLocked: false
                 )
@@ -349,7 +493,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
                     rotationDegrees: -90,
                     layer: .foil,
                     fontStyle: .body,
-                    designLayerID: typographyLayerID,
+                    designLayerID: layerID,
                     usesWrapCoordinates: true,
                     isPanelLocked: false
                 )
@@ -388,6 +532,8 @@ struct BinderyProject: Identifiable, Equatable, Codable {
     /// Board / cover blueprinting (mm).
     var boardThicknessMM: Double
     var hingeGapMM: Double
+    /// Manual spine midsection width. `nil` follows the computed case-spine width.
+    var spineWidthOverrideMM: Double?
     var coverMaterial: CoverMaterial
     var showFoilLayer: Bool
     var showDebossLayer: Bool
@@ -420,6 +566,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         updatedAt: Date = Date(),
         boardThicknessMM: Double = 2.0,
         hingeGapMM: Double = 8.0,
+        spineWidthOverrideMM: Double? = nil,
         coverMaterial: CoverMaterial = .bookCloth,
         showFoilLayer: Bool = false,
         showDebossLayer: Bool = false,
@@ -442,6 +589,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         self.updatedAt = updatedAt
         self.boardThicknessMM = boardThicknessMM
         self.hingeGapMM = hingeGapMM
+        self.spineWidthOverrideMM = spineWidthOverrideMM
         self.coverMaterial = coverMaterial
         self.showFoilLayer = showFoilLayer
         self.showDebossLayer = showDebossLayer
@@ -467,6 +615,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         boardThicknessMM = try container.decode(Double.self, forKey: .boardThicknessMM)
         hingeGapMM = try container.decode(Double.self, forKey: .hingeGapMM)
+        spineWidthOverrideMM = try container.decodeIfPresent(Double.self, forKey: .spineWidthOverrideMM)
         coverMaterial = try container.decode(CoverMaterial.self, forKey: .coverMaterial)
         showFoilLayer = try container.decode(Bool.self, forKey: .showFoilLayer)
         showDebossLayer = try container.decode(Bool.self, forKey: .showDebossLayer)
@@ -496,6 +645,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(boardThicknessMM, forKey: .boardThicknessMM)
         try container.encode(hingeGapMM, forKey: .hingeGapMM)
+        try container.encodeIfPresent(spineWidthOverrideMM, forKey: .spineWidthOverrideMM)
         try container.encode(coverMaterial, forKey: .coverMaterial)
         try container.encode(showFoilLayer, forKey: .showFoilLayer)
         try container.encode(showDebossLayer, forKey: .showDebossLayer)
@@ -513,21 +663,29 @@ struct BinderyProject: Identifiable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, author, heightMM, widthMM, architecture
         case createdAt, updatedAt
-        case boardThicknessMM, hingeGapMM, coverMaterial
+        case boardThicknessMM, hingeGapMM, spineWidthOverrideMM, coverMaterial
         case showFoilLayer, showDebossLayer, folioStampText
         case coverDesignLayers, activeCoverLayerID, coverElements
         case materials, textPaperGSM, estimatedPageCount, enabledTools
     }
 
-    /// Ensure design layers + editable stamps exist; migrate legacy `folioStampText` when present.
-    mutating func seedCoverElementsIfNeeded(spineWidthMM: Double? = nil) {
-        ensureCoverDesignLayers()
-        let mid = spineWidthMM ?? BindingMath.caseSpineWidthMM(
-            pageCount: max(estimatedPageCount, 0),
+    /// Spine midsection used for layout: the manual override when set, else the computed case-spine width.
+    func effectiveSpineWidthMM(pageCount: Int) -> Double {
+        if let spineWidthOverrideMM, spineWidthOverrideMM > 0 {
+            return spineWidthOverrideMM
+        }
+        return BindingMath.caseSpineWidthMM(
+            pageCount: max(pageCount, 0),
             gsm: textPaperGSM,
             boardThicknessMM: boardThicknessMM,
             hingeGapMM: hingeGapMM
         )
+    }
+
+    /// Ensure design layers + editable stamps exist; migrate legacy `folioStampText` when present.
+    mutating func seedCoverElementsIfNeeded(spineWidthMM: Double? = nil) {
+        ensureCoverDesignLayers()
+        let mid = spineWidthMM ?? effectiveSpineWidthMM(pageCount: estimatedPageCount)
         let geo = CoverBlueprintService.Geometry(project: self, spineWidthMM: mid)
         migrateCoverElementsToWrapCoordinates(geometry: geo)
 
@@ -536,9 +694,8 @@ struct BinderyProject: Identifiable, Equatable, Codable {
             return
         }
 
-        let typography = coverDesignLayers.first { $0.name == "Typography" } ?? coverDesignLayers[0]
-        let finishing = coverDesignLayers.first { $0.name == "Finishing" } ?? coverDesignLayers[0]
-        activeCoverLayerID = finishing.id
+        let baseLayer = coverDesignLayers.sorted(by: { $0.zIndex < $1.zIndex }).last ?? coverDesignLayers[0]
+        activeCoverLayerID = baseLayer.id
 
         let stamp = folioStampText.trimmingCharacters(in: .whitespacesAndNewlines)
         let seedTitle = stamp.isEmpty ? title : stamp
@@ -546,8 +703,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
             title: seedTitle,
             author: author,
             geometry: geo,
-            typographyLayerID: typography.id,
-            finishingLayerID: finishing.id
+            layerID: baseLayer.id
         )
         // Full-wrap free placement by default (guides still show joints/spine).
         for index in coverElements.indices {
