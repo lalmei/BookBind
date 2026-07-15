@@ -32,6 +32,7 @@ struct CoverDesignerView: View {
     @State private var soloFinish: CoverElementLayer?
     @State private var shapeDragStart: CGPoint?
     @State private var shapeDragCurrent: CGPoint?
+    @State private var isInspectorEditing = false
 
     private enum CanvasTool: String, CaseIterable, Identifiable {
         case select
@@ -56,11 +57,11 @@ struct CoverDesignerView: View {
 
         var systemImage: String {
             switch self {
-            case .select: return "arrow.up.left.and.arrow.down.right"
-            case .text: return "textformat"
-            case .image: return "photo"
+            case .select: return "cursorarrow"
+            case .text: return "character.cursor.ibeam"
+            case .image: return "photo.on.rectangle"
             case .rectangle: return "rectangle"
-            case .ellipse: return "circle"
+            case .ellipse: return "oval"
             case .line: return "line.diagonal"
             }
         }
@@ -95,6 +96,54 @@ struct CoverDesignerView: View {
         return max(0, project.estimatedPageCount)
     }
 
+    /// Live imposition binding when available; otherwise the project architecture.
+    private var coverArchitecture: BindingArchitecture {
+        if project.allows(.imposition) {
+            return store.workspace(for: project.id).job.bindingStyle.architecture
+        }
+        return project.architecture
+    }
+
+    private var coverMeasurementDefaults: CoverMeasurementDefaults {
+        coverArchitecture.coverDefaults
+    }
+
+    private var bindingStyleLabel: String {
+        if project.allows(.imposition) {
+            return store.workspace(for: project.id).job.bindingStyle.rawValue
+        }
+        return project.architecture.rawValue
+    }
+
+    /// Imposition job for plan estimates — live workspace when available, else architecture defaults.
+    private var effectiveBindingJob: BindingJob {
+        let workspace = store.workspace(for: project.id)
+        if project.allows(.imposition) {
+            return workspace.job
+        }
+        var job = BindingJob()
+        job.applyArchitecture(coverArchitecture)
+        return job
+    }
+
+    /// Signature layout for spine notes — cached impose plan when assembled, else computed.
+    private var resolvedBindingPlan: BindingPlan? {
+        guard pageCount > 0 else { return nil }
+        let workspace = store.workspace(for: project.id)
+        if workspace.assembledPageCount > 0, let plan = workspace.plan {
+            return plan
+        }
+        return ImpositionService.plan(contentPageCount: pageCount, job: effectiveBindingJob)
+    }
+
+    private var signatureSummaryLabel: String? {
+        guard let plan = resolvedBindingPlan, plan.signatureCount > 0 else { return nil }
+        if effectiveBindingJob.bindingStyle == .saddleStitch {
+            return "1 nested · \(plan.pagesPerSignature)-page"
+        }
+        return "\(plan.signatureCount) × \(plan.pagesPerSignature)-page"
+    }
+
     private var minimumBoardSize: CGSize {
         let workspace = store.workspace(for: project.id)
         if let trim = workspace.job.resolvedTrimSize ?? workspace.sources.first?.pageSize {
@@ -116,7 +165,8 @@ struct CoverDesignerView: View {
 
     /// Spine width the current book block requires — the lower bound for manual overrides.
     private var requiredSpineWidth: Double {
-        BindingMath.caseSpineWidthMM(
+        BindingMath.spineWidthMM(
+            architecture: coverArchitecture,
             pageCount: pageCount,
             gsm: project.textPaperGSM,
             boardThicknessMM: project.boardThicknessMM,
@@ -157,23 +207,23 @@ struct CoverDesignerView: View {
         zoomFactor * Double(pinchMagnification)
     }
 
-    /// Canvas + tool rail + inspector, or canvas + collapsed reopen rail.
-    private var minimumWorkbenchWidth: CGFloat {
-        isInspectorVisible ? 760 : 460 + WorkbenchInspectorChrome.collapsedRailWidth
+    /// Canvas + inspector split width.
+    private var minimumSplitWidth: CGFloat {
+        let canvasMin: CGFloat = 416
+        if isInspectorVisible {
+            return canvasMin + 300
+        }
+        return canvasMin + WorkbenchInspectorChrome.collapsedRailWidth
     }
 
     var body: some View {
         HSplitView {
-            HStack(spacing: 0) {
-                toolRail
+            VStack(spacing: 0) {
+                canvasToolbar
                 Divider()
-                VStack(spacing: 0) {
-                    canvasHost
-                    Divider()
-                    footerBar
-                }
+                canvasHost
             }
-            .frame(minWidth: 460)
+            .frame(minWidth: 416)
 
             if isInspectorVisible {
                 inspector
@@ -182,7 +232,7 @@ struct CoverDesignerView: View {
                 WorkbenchInspectorChrome.CollapsedRail(isVisible: $isInspectorVisible, title: "Cover")
             }
         }
-        .horizontallyScrollable(minWidth: minimumWorkbenchWidth)
+        .horizontallyScrollable(minWidth: minimumSplitWidth)
         .onAppear {
             // Sizes are user-editable with soft bounds; warn instead of clamping.
             store.updateSelectedProject {
@@ -196,79 +246,109 @@ struct CoverDesignerView: View {
         ) { result in
             handleImageImport(result)
         }
-        .focusable()
-        .modifier(CoverFocusRingDisabled())
-        .onDeleteCommand {
-            deleteSelected()
-        }
-        .onExitCommand {
-            selectedElementID = nil
-            canvasTool = .select
-        }
-        .onMoveCommand { direction in
-            let step = NSEvent.modifierFlags.contains(.shift) ? 10.0 : 1.0
-            switch direction {
-            case .left: nudgeSelected(dxMM: -step, dyMM: 0)
-            case .right: nudgeSelected(dxMM: step, dyMM: 0)
-            case .up: nudgeSelected(dxMM: 0, dyMM: -step)
-            case .down: nudgeSelected(dxMM: 0, dyMM: step)
-            @unknown default: break
+    }
+
+    // MARK: - Canvas toolbar
+
+    private var canvasToolbar: some View {
+        HStack(spacing: 12) {
+            canvasToolStrip
+
+            Divider()
+                .frame(height: 22)
+
+            finishToolStrip
+
+            Divider()
+                .frame(height: 22)
+
+            Picker("Scale", selection: $viewMode) {
+                ForEach(ViewMode.allCases) { mode in
+                    Text(mode.shortLabel).tag(mode)
+                }
             }
-        }
-        .background {
-            Button("") { deleteSelected() }
+            .pickerStyle(.segmented)
+            .frame(width: 100)
+            .labelsHidden()
+
+            Button {
+                zoomFactor = 1.0
+            } label: {
+                Text(String(format: "%.0f%%", liveZoom * 100))
+                    .font(ArtisanTheme.technicalCaption)
+                    .monospacedDigit()
+            }
+            .buttonStyle(.borderless)
+            .help("Reset pinch zoom")
+
+            if let finish = soloFinish {
+                Label("Solo \(finish.title)", systemImage: "eye")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Show All") { soloFinish = nil }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+            }
+
+            if selectedElementID != nil {
+                Button("Delete", role: .destructive) {
+                    deleteSelected()
+                }
                 .keyboardShortcut(.delete, modifiers: [])
-                .opacity(0)
-                .allowsHitTesting(false)
-            Button("") { deleteSelected() }
-                .keyboardShortcut(.deleteForward, modifiers: [])
-                .opacity(0)
-                .allowsHitTesting(false)
-            Button("") { duplicateSelected() }
-                .keyboardShortcut("d", modifiers: [.command])
-                .opacity(0)
-                .allowsHitTesting(false)
+                .help("Delete selected element (Delete)")
+            }
+
+            Text(toolHint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Menu("Export") {
+                Button("SVG…") { exportSVG() }
+                Button("Blueprint PDF…") { exportPDF() }
+            }
+            .menuStyle(.borderlessButton)
+
+            Button("Export PDF…") { exportPDF() }
+                .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .tint(Color(nsColor: .labelColor))
+        .background(.bar)
+    }
+
+    private var canvasToolStrip: some View {
+        HStack(spacing: 2) {
+            ForEach(CanvasTool.allCases) { tool in
+                Button {
+                    canvasTool = tool
+                } label: {
+                    Image(systemName: tool.systemImage)
+                        .font(.system(size: 13, weight: canvasTool == tool ? .semibold : .regular))
+                        .frame(width: 28, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(canvasTool == tool
+                                      ? Color.accentColor.opacity(0.2)
+                                      : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canvasTool == tool ? Color.accentColor : Color.secondary)
+                .help(tool.title)
+            }
         }
     }
 
-    // MARK: - Tool rail
-
-    private var toolRail: some View {
-        VStack(spacing: 6) {
-            ForEach(CanvasTool.allCases) { tool in
-                toolRailButton(tool)
-            }
-
-            Divider()
-                .padding(.vertical, 4)
-
+    private var finishToolStrip: some View {
+        HStack(spacing: 6) {
             ForEach(CoverElementLayer.allCases) { finish in
                 finishSwatchButton(finish)
             }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 6)
-        .frame(width: 44)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.65))
-    }
-
-    private func toolRailButton(_ tool: CanvasTool) -> some View {
-        Button {
-            canvasTool = tool
-        } label: {
-            Image(systemName: tool.systemImage)
-                .font(.system(size: 14, weight: canvasTool == tool ? .semibold : .regular))
-                .frame(width: 30, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(canvasTool == tool
-                              ? Color.accentColor.opacity(0.18)
-                              : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(canvasTool == tool ? Color.accentColor : Color.secondary)
-        .help(tool.title)
     }
 
     private func finishSwatchButton(_ finish: CoverElementLayer) -> some View {
@@ -322,13 +402,16 @@ struct CoverDesignerView: View {
 
     private func finishSwatchColor(_ finish: CoverElementLayer) -> Color {
         switch finish {
-        case .ink: return ArtisanTheme.onSurface
+        case .ink: return Color(nsColor: .systemGray)
         case .foil: return ArtisanTheme.secondary
-        case .deboss: return ArtisanTheme.tertiary.opacity(0.85)
+        case .deboss: return Color(nsColor: .secondaryLabelColor)
         }
     }
 
     // MARK: - Canvas
+
+    private let wrapSideRulerColumnWidth: CGFloat = 28
+    private let wrapRulerSpacing: CGFloat = 8
 
     private var canvasHost: some View {
         GeometryReader { geo in
@@ -340,18 +423,33 @@ struct CoverDesignerView: View {
                 Color(nsColor: .textBackgroundColor)
 
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                    VStack(spacing: 12) {
-                        dimensionBar(totalWidth: wrapW)
+                    VStack(spacing: 8) {
+                        if showJointGuides {
+                            HStack(alignment: .top, spacing: wrapRulerSpacing) {
+                                Color.clear
+                                    .frame(width: wrapSideRulerColumnWidth)
+                                wrapTopRuler(wrapW: wrapW, scale: scale)
+                            }
+                        } else {
+                            dimensionBar(totalWidth: wrapW)
+                        }
 
-                        wrapCanvas(wrapW: wrapW, wrapH: wrapH, scale: scale)
+                        HStack(alignment: .top, spacing: wrapRulerSpacing) {
+                            if showJointGuides {
+                                wrapSideRuler(wrapH: wrapH)
+                            }
+                            wrapCanvas(wrapW: wrapW, wrapH: wrapH, scale: scale)
+                        }
 
-                        Text("Full wrap · guides mark joints & spine · place art anywhere")
+                        Text(showJointGuides
+                             ? "Zone labels sit outside the artboard · dashed lines are joint guides only"
+                             : "Full wrap · place art anywhere")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .frame(
-                        minWidth: max(geo.size.width, wrapW + 80),
-                        minHeight: max(geo.size.height, wrapH + 100)
+                        minWidth: max(geo.size.width, wrapW + (showJointGuides ? 108 : 80)),
+                        minHeight: max(geo.size.height, wrapH + (showJointGuides ? 140 : 100))
                     )
                 }
 
@@ -367,6 +465,40 @@ struct CoverDesignerView: View {
         .background(Color(nsColor: .textBackgroundColor))
         .focusable()
         .modifier(CoverFocusRingDisabled())
+        .onDeleteCommand {
+            guard !isInspectorEditing else { return }
+            deleteSelected()
+        }
+        .onExitCommand {
+            guard !isInspectorEditing else { return }
+            selectedElementID = nil
+            canvasTool = .select
+        }
+        .onMoveCommand { direction in
+            guard !isInspectorEditing else { return }
+            let step = NSEvent.modifierFlags.contains(.shift) ? 10.0 : 1.0
+            switch direction {
+            case .left: nudgeSelected(dxMM: -step, dyMM: 0)
+            case .right: nudgeSelected(dxMM: step, dyMM: 0)
+            case .up: nudgeSelected(dxMM: 0, dyMM: -step)
+            case .down: nudgeSelected(dxMM: 0, dyMM: step)
+            @unknown default: break
+            }
+        }
+        .background {
+            Button("") { deleteSelected() }
+                .keyboardShortcut(.delete, modifiers: [])
+                .opacity(0)
+                .allowsHitTesting(false)
+            Button("") { deleteSelected() }
+                .keyboardShortcut(.deleteForward, modifiers: [])
+                .opacity(0)
+                .allowsHitTesting(false)
+            Button("") { duplicateSelected() }
+                .keyboardShortcut("d", modifiers: [.command])
+                .opacity(0)
+                .allowsHitTesting(false)
+        }
     }
 
     private var magnificationGesture: some Gesture {
@@ -400,6 +532,171 @@ struct CoverDesignerView: View {
         }
     }
 
+    /// Zone names and widths above the artboard, aligned to panel columns.
+    private func wrapTopRuler(wrapW: CGFloat, scale: Double) -> some View {
+        let midsectionCramped = midsectionPanelsAreCramped(scale: scale)
+        let rulerHeight: CGFloat = midsectionCramped ? 40 : 48
+
+        return VStack(spacing: 4) {
+            Text(String(format: "Total wrap %.1f mm · %.0f%% zoom", geometry.totalW, liveZoom * 100))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            if midsectionCramped {
+                Text(midsectionLegendText())
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: max(wrapW, 220))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: rulerHeight - 12)
+                    panelBoundaryTicks(width: wrapW, scale: scale, tickHeight: 7)
+                }
+
+                ForEach(geometry.layoutPanels) { panel in
+                    let origin = geometry.panelOriginX(panel) * scale
+                    let pixelWidth = max(1, geometry.panelWidth(panel) * scale)
+                    if panelRulerLabelMode(panel: panel, pixelWidth: pixelWidth, midsectionCramped: midsectionCramped) != nil {
+                        panelRulerLabel(panel: panel, pixelWidth: pixelWidth, midsectionCramped: midsectionCramped)
+                            .position(
+                                x: origin + pixelWidth / 2,
+                                y: rulerCenterY(for: panel, pixelWidth: pixelWidth, rulerHeight: rulerHeight, midsectionCramped: midsectionCramped)
+                            )
+                    }
+                }
+            }
+            .frame(width: wrapW, height: rulerHeight)
+        }
+    }
+
+    /// Midsection bands are too narrow to read when any joint/spine column is under ~44 pt.
+    private func midsectionPanelsAreCramped(scale: Double) -> Bool {
+        geometry.layoutPanels
+            .filter(\.prefersVerticalText)
+            .contains { geometry.panelWidth($0) * scale < 44 }
+    }
+
+    private func midsectionLegendText() -> String {
+        geometry.layoutPanels
+            .filter(\.prefersVerticalText)
+            .map { "\($0.canvasLabel) \(panelDimensionText($0))" }
+            .joined(separator: "  ·  ")
+    }
+
+    private enum PanelRulerLabelMode {
+        case stacked
+        case inline
+        case angled
+    }
+
+    private func panelRulerLabelMode(panel: CoverPanel, pixelWidth: CGFloat, midsectionCramped: Bool) -> PanelRulerLabelMode? {
+        if panel.prefersVerticalText, midsectionCramped { return nil }
+
+        if pixelWidth >= 72 { return .stacked }
+        if pixelWidth >= 44 { return .inline }
+        if pixelWidth >= 18 { return .angled }
+        return panel.prefersVerticalText ? nil : .angled
+    }
+
+    private func rulerCenterY(
+        for panel: CoverPanel,
+        pixelWidth: CGFloat,
+        rulerHeight: CGFloat,
+        midsectionCramped: Bool
+    ) -> CGFloat {
+        switch panelRulerLabelMode(panel: panel, pixelWidth: pixelWidth, midsectionCramped: midsectionCramped) {
+        case .angled:
+            return rulerHeight / 2 + 4
+        case .stacked, .inline, .none:
+            return rulerHeight / 2 - 2
+        }
+    }
+
+    @ViewBuilder
+    private func panelRulerLabel(panel: CoverPanel, pixelWidth: CGFloat, midsectionCramped: Bool) -> some View {
+        if let mode = panelRulerLabelMode(panel: panel, pixelWidth: pixelWidth, midsectionCramped: midsectionCramped) {
+            Group {
+                switch mode {
+                case .stacked:
+                    VStack(spacing: 1) {
+                        Text(panel.canvasLabel)
+                            .fontWeight(panel == .spine ? .semibold : .regular)
+                        Text(panelDimensionText(panel))
+                    }
+                    .font(ArtisanTheme.technicalCaption)
+                case .inline:
+                    Text("\(panel.canvasLabel) \(panelDimensionText(panel))")
+                        .font(.caption2)
+                case .angled:
+                    Text("\(panel.canvasLabel) \(panelDimensionText(panel))")
+                        .font(.caption2)
+                        .rotationEffect(.degrees(-58))
+                        .fixedSize()
+                }
+            }
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: true, vertical: true)
+        }
+    }
+
+    /// Board height label to the left of the artboard.
+    private func wrapSideRuler(wrapH: CGFloat) -> some View {
+        VStack(spacing: 6) {
+            Text("H")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+            Text(String(format: "%.0f mm", geometry.boardH))
+                .font(ArtisanTheme.technicalCaption)
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(-90))
+                .fixedSize()
+        }
+        .frame(width: wrapSideRulerColumnWidth)
+        .frame(height: wrapH, alignment: .center)
+    }
+
+    /// Wrap-mm positions for ruler ticks — every panel origin plus the wrap's right edge.
+    private var rulerBoundaryXsMM: [Double] {
+        var xs = geometry.layoutPanels.map { geometry.panelOriginX($0) }
+        xs.append(geometry.totalW)
+        return Array(Set(xs.map { ($0 * 100).rounded() / 100 })).sorted()
+    }
+
+    private func panelBoundaryTicks(width: CGFloat, scale: Double, tickHeight: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.22))
+                .frame(width: width, height: 1)
+
+            ForEach(rulerBoundaryXsMM, id: \.self) { xMM in
+                let x = CGFloat(xMM * scale)
+                let clampedX = min(max(0, x), width)
+                Rectangle()
+                    .fill(Color.primary.opacity(0.35))
+                    .frame(width: 1, height: tickHeight)
+                    .position(x: clampedX, y: tickHeight / 2)
+            }
+        }
+        .frame(width: width, height: tickHeight)
+    }
+
+    private func panelDimensionText(_ panel: CoverPanel) -> String {
+        switch panel {
+        case .back, .front:
+            return String(format: "%.0f×%.0f mm", geometry.boardW, geometry.boardH)
+        case .spine:
+            return String(format: "%.1f mm", geometry.spineFace)
+        case .backHinge, .frontHinge:
+            return String(format: "%.1f mm", geometry.hinge)
+        }
+    }
+
     private func wrapCanvas(wrapW: CGFloat, wrapH: CGFloat, scale: Double) -> some View {
         ZStack(alignment: .topLeading) {
             // Continuous material fill — one design surface for the full wrap.
@@ -407,20 +704,18 @@ struct CoverDesignerView: View {
                 .fill(materialBaseFill)
                 .frame(width: wrapW, height: wrapH)
 
-            // Zone fills under guides (visual only, not separate hit targets).
-            ForEach(geometry.layoutPanels) { panel in
-                let x = geometry.panelOriginX(panel) * scale
-                let w = geometry.panelWidth(panel) * scale
-                Rectangle()
-                    .fill(zoneTint(for: panel))
-                    .frame(width: max(1, w), height: wrapH)
-                    .offset(x: x)
-                    .allowsHitTesting(false)
-            }
-
             if showJointGuides {
+                ForEach(geometry.layoutPanels) { panel in
+                    let x = geometry.panelOriginX(panel) * scale
+                    let w = geometry.panelWidth(panel) * scale
+                    Rectangle()
+                        .fill(zoneTint(for: panel))
+                        .frame(width: max(1, w), height: wrapH)
+                        .offset(x: x)
+                        .allowsHitTesting(false)
+                }
+
                 jointGuideOverlay(wrapH: wrapH, scale: scale)
-                zoneCaptions(wrapH: wrapH, scale: scale)
             }
 
             // Full-wrap hit target (under elements so selection still works).
@@ -565,38 +860,6 @@ struct CoverDesignerView: View {
         }
         .stroke(Color.black.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
         .allowsHitTesting(false)
-    }
-
-    private func zoneCaptions(wrapH: CGFloat, scale: Double) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(geometry.layoutPanels) { panel in
-                let x = geometry.panelOriginX(panel) * scale
-                let w = geometry.panelWidth(panel) * scale
-                VStack {
-                    Spacer()
-                    Text(zoneCaption(panel))
-                        .font(ArtisanTheme.technicalCaption)
-                        .foregroundStyle(.black.opacity(0.45))
-                        .multilineTextAlignment(.center)
-                        .frame(width: max(24, w))
-                        .padding(.bottom, 6)
-                }
-                .frame(width: max(24, w), height: wrapH)
-                .offset(x: x)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func zoneCaption(_ panel: CoverPanel) -> String {
-        switch panel {
-        case .back, .front:
-            return String(format: "%@\n%.0f×%.0f", panel.canvasLabel, geometry.boardW, geometry.boardH)
-        case .spine:
-            return String(format: "Spine\n%.1f mm", geometry.spineFace)
-        case .backHinge, .frontHinge:
-            return String(format: "Joint\n%.1f", geometry.hinge)
-        }
     }
 
     private var visibleElements: [CoverDesignElement] {
@@ -1067,68 +1330,6 @@ struct CoverDesignerView: View {
         return base * liveZoom
     }
 
-    // MARK: - Footer
-
-    private var footerBar: some View {
-        HStack(spacing: 12) {
-            Picker("Scale", selection: $viewMode) {
-                ForEach(ViewMode.allCases) { mode in
-                    Text(mode.shortLabel).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 100)
-            .labelsHidden()
-
-            Button {
-                zoomFactor = 1.0
-            } label: {
-                Text(String(format: "%.0f%%", liveZoom * 100))
-                    .font(ArtisanTheme.technicalCaption)
-                    .monospacedDigit()
-            }
-            .buttonStyle(.borderless)
-            .help("Reset pinch zoom")
-
-            if let finish = soloFinish {
-                Label("Solo \(finish.title)", systemImage: "eye")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Show All") { soloFinish = nil }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-            }
-
-            if selectedElementID != nil {
-                Button("Delete", role: .destructive) {
-                    deleteSelected()
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-                .help("Delete selected element (Delete)")
-            }
-
-            Text(toolHint)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer()
-
-            Menu("Export") {
-                Button("SVG…") { exportSVG() }
-                Button("Blueprint PDF…") { exportPDF() }
-            }
-            .menuStyle(.borderlessButton)
-
-            Button("Export PDF…") { exportPDF() }
-                .buttonStyle(.bordered)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .tint(Color(nsColor: .labelColor))
-        .background(.bar)
-    }
-
     private var toolHint: String {
         switch canvasTool {
         case .text: return "Click the wrap to place text · \(activeFinish.title) finish"
@@ -1162,49 +1363,78 @@ struct CoverDesignerView: View {
                     WorkbenchInspectorChrome.ToggleButton(isVisible: $isInspectorVisible)
                 }
 
-                collapsibleSection("Measurements", isExpanded: $measurementsExpanded) {
+                collapsibleSection("Measurements", isExpanded: $measurementsExpanded, trailing: {
+                    Button("Auto", action: resetAllMeasurements)
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .foregroundStyle(Color(nsColor: .linkColor))
+                        .help(measurementsAutoHelp)
+                }) {
                     labeledControl("Board (mm)") {
-                        TextField("", value: boardBinding, format: .number.precision(.fractionLength(1)))
-                            .frame(width: 72)
+                        CoverInspectorNumberField(
+                            value: project.boardThicknessMM,
+                            fractionDigits: 1,
+                            onCommit: { setBoardThickness($0) },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
                     labeledControl("Groove (mm)") {
-                        TextField("", value: hingeBinding, format: .number.precision(.fractionLength(1)))
-                            .frame(width: 72)
+                        CoverInspectorNumberField(
+                            value: project.hingeGapMM,
+                            fractionDigits: 1,
+                            onCommit: { setHingeGap($0) },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
                     labeledControl("Spine (mm)") {
-                        HStack(spacing: 8) {
-                            TextField("", value: spineBinding, format: .number.precision(.fractionLength(1)))
-                                .frame(width: 72)
-                            if project.spineWidthOverrideMM != nil {
-                                Button("Auto") {
-                                    store.updateSelectedProject { $0.spineWidthOverrideMM = nil }
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.caption)
-                                .help(String(format: "Follow the computed spine (%.1f mm)", requiredSpineWidth))
-                            }
-                        }
+                        CoverInspectorNumberField(
+                            value: spineWidth,
+                            fractionDigits: 1,
+                            onCommit: { setSpineWidth($0) },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
                     labeledControl("Cover W") {
-                        TextField("", value: widthBinding, format: .number.precision(.fractionLength(0)))
-                            .frame(width: 72)
+                        CoverInspectorNumberField(
+                            value: project.widthMM,
+                            fractionDigits: 0,
+                            onCommit: { setCoverWidth($0) },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
                     labeledControl("Cover H") {
-                        TextField("", value: heightBinding, format: .number.precision(.fractionLength(0)))
-                            .frame(width: 72)
+                        CoverInspectorNumberField(
+                            value: project.heightMM,
+                            fractionDigits: 0,
+                            onCommit: { setCoverHeight($0) },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
                     if store.workspace(for: project.id).totalSourcePages == 0 {
                         labeledControl("Est. pages") {
-                            TextField("", value: pagesBinding, format: .number)
-                                .frame(width: 72)
+                            CoverInspectorNumberField(
+                                value: Double(project.estimatedPageCount),
+                                fractionDigits: 0,
+                                onCommit: { setEstimatedPages($0) },
+                                onEditingChanged: { isInspectorEditing = $0 }
+                            )
                         }
                     }
                     labeledControl("GSM") {
-                        TextField("", value: gsmBinding, format: .number)
-                            .frame(width: 72)
+                        CoverInspectorNumberField(
+                            value: project.textPaperGSM,
+                            fractionDigits: 0,
+                            onCommit: { setTextPaperGSM($0) },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
 
                     Divider()
+
+                    metricRow("Binding style", bindingStyleLabel)
+                    if let signatureSummaryLabel {
+                        metricRow("Signatures", signatureSummaryLabel)
+                    }
 
                     metricRow(
                         "Minimum for signatures",
@@ -1223,7 +1453,7 @@ struct CoverDesignerView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Text("Imposition trim and the book block set the recommended minimums; you can go below them, but the wrap may not cover the pages.")
+                    Text("Imposition binding style sets the Auto targets and spine formula. Trim and the book block set the recommended minimums.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1243,20 +1473,6 @@ struct CoverDesignerView: View {
                         .buttonStyle(.borderless)
 
                         Spacer()
-
-                        Menu {
-                            Button("Text") { canvasTool = .text }
-                            Button("Image") { canvasTool = .image }
-                            Divider()
-                            Button("Rectangle") { canvasTool = .rectangle }
-                            Button("Ellipse") { canvasTool = .ellipse }
-                            Button("Line") { canvasTool = .line }
-                        } label: {
-                            Label("Insert", systemImage: "plus.square")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .help("Pick an element, then click or drag on the wrap")
                     }
 
                     labeledControl("Material") {
@@ -1269,7 +1485,7 @@ struct CoverDesignerView: View {
                     }
                     Toggle("Joint / spine guides", isOn: $showJointGuides)
 
-                    Text("Design layers stack artwork. Finish badges (I/F/D) show ink, foil, or deboss channels. Use the left swatches to set the active finish for new shapes.")
+                    Text("Pick a tool from the toolbar, then click or drag on the wrap. Use the I/F/D swatches to set the active finish for new shapes.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1290,6 +1506,10 @@ struct CoverDesignerView: View {
             .padding(16)
         }
         .background(.background)
+        .tint(Color(nsColor: .controlAccentColor))
+        .onDisappear {
+            store.save()
+        }
     }
 
     private var finishChannelBar: some View {
@@ -1417,15 +1637,27 @@ struct CoverDesignerView: View {
             .buttonStyle(.borderless)
             .help(layer.isLocked ? "Unlock layer" : "Lock layer — its artwork can’t be selected or moved")
 
-            TextField("Layer", text: layerNameBinding(layer.id))
-                .fontWeight(isActive ? .semibold : .regular)
-                .textFieldStyle(.plain)
+            CoverInspectorTextField(
+                value: layer.name,
+                placeholder: "Layer",
+                isBold: isActive,
+                onCommit: { name in
+                    store.updateSelectedProject { $0.renameCoverDesignLayer(layer.id, to: name) }
+                },
+                onEditingChanged: { isInspectorEditing = $0 }
+            )
 
             Spacer(minLength: 4)
 
-            Text("\(count)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Button {
+                store.updateSelectedProject { $0.activeCoverLayerID = layer.id }
+            } label: {
+                Text("\(count)")
+                    .font(.caption2)
+                    .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isActive ? "Active layer — new elements land here" : "Click to make this the active layer")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -1435,10 +1667,6 @@ struct CoverDesignerView: View {
                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.22)
                       : Color(nsColor: .controlBackgroundColor).opacity(0.55))
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            store.updateSelectedProject { $0.activeCoverLayerID = layer.id }
-        }
         .contextMenu {
             Button("Bring Forward") { moveLayer(layer.id, direction: 1) }
             Button("Send Backward") { moveLayer(layer.id, direction: -1) }
@@ -1577,7 +1805,23 @@ struct CoverDesignerView: View {
             switch element.kind {
             case .text:
                 labeledControl("Text") {
-                    TextField("Stamp text", text: elementTextBinding(element.id))
+                    CoverInspectorTextField(
+                        value: element.text,
+                        placeholder: "Stamp text",
+                        onCommit: { text in
+                            updateElement(element.id) { el in
+                                el.text = text
+                                let measured = CoverEditorMath.measuredTextSizeMM(
+                                    text: text.isEmpty ? " " : text,
+                                    fontSizeMM: el.fontSizeMM,
+                                    fontStyle: el.fontStyle
+                                )
+                                el.widthMM = measured.width
+                                el.heightMM = measured.height
+                            }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
                 labeledControl("Style") {
                     Picker("", selection: elementStyleBinding(element.id)) {
@@ -1588,8 +1832,23 @@ struct CoverDesignerView: View {
                     .labelsHidden()
                 }
                 labeledControl("Size mm") {
-                    TextField("", value: elementSizeBinding(element.id), format: .number.precision(.fractionLength(1)))
-                        .frame(width: 72)
+                    CoverInspectorNumberField(
+                        value: element.fontSizeMM,
+                        fractionDigits: 1,
+                        onCommit: { size in
+                            updateElement(element.id) { el in
+                                el.fontSizeMM = max(1, size)
+                                let measured = CoverEditorMath.measuredTextSizeMM(
+                                    text: el.text.isEmpty ? " " : el.text,
+                                    fontSizeMM: el.fontSizeMM,
+                                    fontStyle: el.fontStyle
+                                )
+                                el.widthMM = measured.width
+                                el.heightMM = measured.height
+                            }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
             case .image:
                 labeledControl("Image") {
@@ -1597,12 +1856,24 @@ struct CoverDesignerView: View {
                         .foregroundStyle(.secondary)
                 }
                 labeledControl("Width mm") {
-                    TextField("", value: elementWidthBinding(element.id), format: .number.precision(.fractionLength(1)))
-                        .frame(width: 72)
+                    CoverInspectorNumberField(
+                        value: element.widthMM,
+                        fractionDigits: 1,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) { $0.widthMM = max(4, value) }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
                 labeledControl("Height mm") {
-                    TextField("", value: elementHeightBinding(element.id), format: .number.precision(.fractionLength(1)))
-                        .frame(width: 72)
+                    CoverInspectorNumberField(
+                        value: element.heightMM,
+                        fractionDigits: 1,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) { $0.heightMM = max(4, value) }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
             case .shape:
                 labeledControl("Shape") {
@@ -1615,13 +1886,25 @@ struct CoverDesignerView: View {
                     .pickerStyle(.menu)
                 }
                 labeledControl("Width mm") {
-                    TextField("", value: elementWidthBinding(element.id), format: .number.precision(.fractionLength(1)))
-                        .frame(width: 72)
+                    CoverInspectorNumberField(
+                        value: element.widthMM,
+                        fractionDigits: 1,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) { $0.widthMM = max(4, value) }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
                 if element.shapeType != .line {
                     labeledControl("Height mm") {
-                        TextField("", value: elementHeightBinding(element.id), format: .number.precision(.fractionLength(1)))
-                            .frame(width: 72)
+                        CoverInspectorNumberField(
+                            value: element.heightMM,
+                            fractionDigits: 1,
+                            onCommit: { value in
+                                updateElement(element.id, syncStamp: false) { $0.heightMM = max(4, value) }
+                            },
+                            onEditingChanged: { isInspectorEditing = $0 }
+                        )
                     }
                 }
                 labeledControl("Border") {
@@ -1632,8 +1915,16 @@ struct CoverDesignerView: View {
                     )
                 }
                 labeledControl("Stroke mm") {
-                    TextField("", value: elementStrokeWidthBinding(element.id), format: .number.precision(.fractionLength(2)))
-                        .frame(width: 72)
+                    CoverInspectorNumberField(
+                        value: element.strokeWidthMM,
+                        fractionDigits: 2,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) {
+                                $0.strokeWidthMM = min(10, max(0.1, value))
+                            }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
                 if element.shapeType != .line {
                     labeledControl("Fill") {
@@ -1652,13 +1943,31 @@ struct CoverDesignerView: View {
                     Text("X")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    TextField("", value: elementXBinding(element.id), format: .number.precision(.fractionLength(1)))
-                        .frame(width: 56)
+                    CoverInspectorNumberField(
+                        value: element.wrapCenterX(geometry: geometry),
+                        fractionDigits: 1,
+                        width: 56,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) { el in
+                                el.usesWrapCoordinates = true
+                                el.xMM = clampWrapX(value)
+                                el.panel = geometry.panel(containingWrapX: el.xMM)
+                            }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                     Text("Y")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    TextField("", value: elementYBinding(element.id), format: .number.precision(.fractionLength(1)))
-                        .frame(width: 56)
+                    CoverInspectorNumberField(
+                        value: element.yMM,
+                        fractionDigits: 1,
+                        width: 56,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) { $0.yMM = clampWrapY(value) }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                 }
                 .help("Element center in millimeters from the wrap’s top-left corner")
             }
@@ -1678,14 +1987,21 @@ struct CoverDesignerView: View {
                     in: 0.1...1
                 ) { editing in
                     if !editing {
-                        store.updateSelectedProject { _ in }
+                        store.save()
                     }
                 }
             }
             labeledControl("Rotate") {
                 HStack(spacing: 8) {
-                    TextField("", value: elementRotationBinding(element.id), format: .number.precision(.fractionLength(0)))
-                        .frame(width: 56)
+                    CoverInspectorNumberField(
+                        value: element.rotationDegrees,
+                        fractionDigits: 0,
+                        width: 56,
+                        onCommit: { value in
+                            updateElement(element.id) { $0.rotationDegrees = value }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
                     Button("-90°") { updateElement(element.id) { $0.rotationDegrees = -90 } }
                         .buttonStyle(.borderless)
                     Button("0°") { updateElement(element.id) { $0.rotationDegrees = 0 } }
@@ -1716,17 +2032,44 @@ struct CoverDesignerView: View {
 
     private var noteText: String {
         let pages = max(pageCount, 0)
-        if pages > 0 {
-            let sigApprox = max(1, Int(ceil(Double(pages) / 16.0)))
+        guard pages > 0 else {
+            return "Enter estimated pages (or assemble a book block) to calculate spine width for \(coverArchitecture.rawValue)."
+        }
+
+        let job = effectiveBindingJob
+        if job.bindingStyle == .saddleStitch {
+            let nestedPages = resolvedBindingPlan?.pagesPerSignature ?? pages
             return String(
-                format: "Spine accounts for ~%d signatures of %.0fgsm and %.1fmm board hinges. Text block ≈ %.2f mm.",
-                sigApprox,
+                format: "%@ spine — 1 nested %d-page signature, %.0f gsm, %.1f mm cover. Text block ≈ %.2f mm.",
+                coverArchitecture.rawValue,
+                nestedPages,
                 project.textPaperGSM,
                 project.boardThicknessMM,
                 textBlock
             )
         }
-        return "Enter estimated pages (or assemble a book block) to calculate spine width."
+
+        if let plan = resolvedBindingPlan, plan.signatureCount > 0 {
+            return String(
+                format: "%@ spine — %d × %d-page signatures, %.0f gsm, %.1f mm board, %.1f mm grooves. Text block ≈ %.2f mm.",
+                coverArchitecture.rawValue,
+                plan.signatureCount,
+                plan.pagesPerSignature,
+                project.textPaperGSM,
+                project.boardThicknessMM,
+                project.hingeGapMM,
+                textBlock
+            )
+        }
+
+        return String(
+            format: "%@ spine — %.0f gsm, %.1f mm board, %.1f mm grooves. Text block ≈ %.2f mm.",
+            coverArchitecture.rawValue,
+            project.textPaperGSM,
+            project.boardThicknessMM,
+            project.hingeGapMM,
+            textBlock
+        )
     }
 
     private func brushStylePicker(elementID: UUID, selected: CoverStrokeStyle, color: Color) -> some View {
@@ -1758,31 +2101,51 @@ struct CoverDesignerView: View {
         }
     }
 
+    private var measurementsAutoHelp: String {
+        String(
+            format: "Reset board, groove, spine, cover trim, and paper to %@ defaults",
+            bindingStyleLabel
+        )
+    }
+
     private func collapsibleSection<Content: View>(
         _ title: String,
         isExpanded: Binding<Bool>,
         @ViewBuilder content: () -> Content
     ) -> some View {
+        collapsibleSection(title, isExpanded: isExpanded, trailing: { EmptyView() }, content: content)
+    }
+
+    private func collapsibleSection<Content: View, Trailing: View>(
+        _ title: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder trailing: () -> Trailing,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.wrappedValue.toggle()
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isExpanded.wrappedValue.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                        Text(title.uppercased())
+                            .font(ArtisanTheme.labelFont)
+                            .tracking(0.6)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
-                    Text(title.uppercased())
-                        .font(ArtisanTheme.labelFont)
-                        .tracking(0.6)
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                trailing()
             }
-            .buttonStyle(.plain)
             .padding(.vertical, 6)
 
             if isExpanded.wrappedValue {
@@ -1827,6 +2190,56 @@ struct CoverDesignerView: View {
 
     // MARK: - Mutations
 
+    private func setBoardThickness(_ value: Double) {
+        store.updateSelectedProject { $0.boardThicknessMM = max(0.5, value) }
+    }
+
+    private func setHingeGap(_ value: Double) {
+        store.updateSelectedProject { $0.hingeGapMM = max(0, value) }
+    }
+
+    private func setSpineWidth(_ value: Double) {
+        store.updateSelectedProject {
+            $0.spineWidthOverrideMM = CoverEditorMath.spineWidthOverride(proposed: value)
+        }
+    }
+
+    private func setCoverWidth(_ value: Double) {
+        store.updateSelectedProject {
+            $0.widthMM = CoverEditorMath.boardSize(current: $0.widthMM, proposed: value)
+        }
+    }
+
+    private func setCoverHeight(_ value: Double) {
+        store.updateSelectedProject {
+            $0.heightMM = CoverEditorMath.boardSize(current: $0.heightMM, proposed: value)
+        }
+    }
+
+    private func setEstimatedPages(_ value: Double) {
+        store.updateSelectedProject { $0.estimatedPageCount = max(0, Int(value.rounded())) }
+    }
+
+    private func setTextPaperGSM(_ value: Double) {
+        store.updateSelectedProject { $0.textPaperGSM = max(1, value) }
+    }
+
+    private func resetAllMeasurements() {
+        let defaults = coverMeasurementDefaults
+        let clearPageEstimate = store.workspace(for: project.id).totalSourcePages == 0
+        store.updateSelectedProject {
+            $0.boardThicknessMM = defaults.boardThicknessMM
+            $0.hingeGapMM = defaults.hingeGapMM
+            $0.spineWidthOverrideMM = nil
+            $0.widthMM = minimumBoardWidthMM
+            $0.heightMM = minimumBoardHeightMM
+            $0.textPaperGSM = defaults.textPaperGSM
+            if clearPageEstimate {
+                $0.estimatedPageCount = 0
+            }
+        }
+    }
+
     private func toggleLayerVisibility(_ id: UUID) {
         store.updateSelectedProject { project in
             guard let index = project.coverDesignLayers.firstIndex(where: { $0.id == id }) else { return }
@@ -1847,13 +2260,6 @@ struct CoverDesignerView: View {
 
     private func toggleElementVisibility(_ id: UUID) {
         updateElement(id, syncStamp: false) { $0.isVisible.toggle() }
-    }
-
-    private func layerNameBinding(_ id: UUID) -> Binding<String> {
-        Binding(
-            get: { project.coverDesignLayers.first { $0.id == id }?.name ?? "" },
-            set: { value in store.updateSelectedProject { $0.renameCoverDesignLayer(id, to: value) } }
-        )
     }
 
     private func deleteLayer(_ id: UUID) {
@@ -1926,24 +2332,6 @@ struct CoverDesignerView: View {
             project.syncFolioStampTextFromElements()
         }
         selectedElementID = nil
-    }
-
-    private func elementTextBinding(_ id: UUID) -> Binding<String> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.text ?? "" },
-            set: { value in
-                updateElement(id) { el in
-                    el.text = value
-                    let measured = CoverEditorMath.measuredTextSizeMM(
-                        text: value.isEmpty ? " " : value,
-                        fontSizeMM: el.fontSizeMM,
-                        fontStyle: el.fontStyle
-                    )
-                    el.widthMM = measured.width
-                    el.heightMM = measured.height
-                }
-            }
-        )
     }
 
     private func elementPanelBinding(_ id: UUID) -> Binding<CoverPanel> {
@@ -2021,26 +2409,6 @@ struct CoverDesignerView: View {
         )
     }
 
-    private func elementSizeBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.fontSizeMM ?? 4 },
-            set: { value in
-                updateElement(id) { el in
-                    el.fontSizeMM = max(1, value)
-                    if el.kind == .text {
-                        let measured = CoverEditorMath.measuredTextSizeMM(
-                            text: el.text.isEmpty ? " " : el.text,
-                            fontSizeMM: el.fontSizeMM,
-                            fontStyle: el.fontStyle
-                        )
-                        el.widthMM = measured.width
-                        el.heightMM = measured.height
-                    }
-                }
-            }
-        )
-    }
-
     private func elementShapeTypeBinding(_ id: UUID) -> Binding<CoverShapeType> {
         Binding(
             get: { project.coverElements.first { $0.id == id }?.shapeType ?? .rectangle },
@@ -2048,38 +2416,10 @@ struct CoverDesignerView: View {
         )
     }
 
-    private func elementStrokeStyleBinding(_ id: UUID) -> Binding<CoverStrokeStyle> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.strokeStyle ?? .solid },
-            set: { value in updateElement(id, syncStamp: false) { $0.strokeStyle = value } }
-        )
-    }
-
-    private func elementStrokeWidthBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.strokeWidthMM ?? 0.8 },
-            set: { value in updateElement(id, syncStamp: false) { $0.strokeWidthMM = min(10, max(0.1, value)) } }
-        )
-    }
-
     private func elementFilledBinding(_ id: UUID) -> Binding<Bool> {
         Binding(
             get: { project.coverElements.first { $0.id == id }?.isFilled ?? false },
             set: { value in updateElement(id, syncStamp: false) { $0.isFilled = value } }
-        )
-    }
-
-    private func elementWidthBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.widthMM ?? 40 },
-            set: { value in updateElement(id, syncStamp: false) { $0.widthMM = max(4, value) } }
-        )
-    }
-
-    private func elementHeightBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.heightMM ?? 40 },
-            set: { value in updateElement(id, syncStamp: false) { $0.heightMM = max(4, value) } }
         )
     }
 
@@ -2092,103 +2432,10 @@ struct CoverDesignerView: View {
         )
     }
 
-    private func elementXBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: {
-                guard let el = project.coverElements.first(where: { $0.id == id }) else { return 0 }
-                return el.wrapCenterX(geometry: geometry)
-            },
-            set: { value in
-                updateElement(id, syncStamp: false) { el in
-                    el.usesWrapCoordinates = true
-                    el.xMM = clampWrapX(value)
-                    el.panel = geometry.panel(containingWrapX: el.xMM)
-                }
-            }
-        )
-    }
-
-    private func elementYBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.yMM ?? 0 },
-            set: { value in
-                updateElement(id, syncStamp: false) { $0.yMM = clampWrapY(value) }
-            }
-        )
-    }
-
-    private func elementRotationBinding(_ id: UUID) -> Binding<Double> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.rotationDegrees ?? 0 },
-            set: { value in updateElement(id) { $0.rotationDegrees = value } }
-        )
-    }
-
     private var materialBinding: Binding<CoverMaterial> {
         Binding(
             get: { project.coverMaterial },
             set: { value in store.updateSelectedProject { $0.coverMaterial = value } }
-        )
-    }
-
-    private var widthBinding: Binding<Double> {
-        Binding(
-            get: { project.widthMM },
-            set: { value in
-                store.updateSelectedProject {
-                    $0.widthMM = CoverEditorMath.boardSize(current: $0.widthMM, proposed: value)
-                }
-            }
-        )
-    }
-
-    private var heightBinding: Binding<Double> {
-        Binding(
-            get: { project.heightMM },
-            set: { value in
-                store.updateSelectedProject {
-                    $0.heightMM = CoverEditorMath.boardSize(current: $0.heightMM, proposed: value)
-                }
-            }
-        )
-    }
-
-    private var spineBinding: Binding<Double> {
-        Binding(
-            get: { spineWidth },
-            set: { value in
-                store.updateSelectedProject {
-                    $0.spineWidthOverrideMM = CoverEditorMath.spineWidthOverride(proposed: value)
-                }
-            }
-        )
-    }
-
-    private var boardBinding: Binding<Double> {
-        Binding(
-            get: { project.boardThicknessMM },
-            set: { value in store.updateSelectedProject { $0.boardThicknessMM = max(0.5, value) } }
-        )
-    }
-
-    private var hingeBinding: Binding<Double> {
-        Binding(
-            get: { project.hingeGapMM },
-            set: { value in store.updateSelectedProject { $0.hingeGapMM = max(0, value) } }
-        )
-    }
-
-    private var gsmBinding: Binding<Double> {
-        Binding(
-            get: { project.textPaperGSM },
-            set: { value in store.updateSelectedProject { $0.textPaperGSM = max(1, value) } }
-        )
-    }
-
-    private var pagesBinding: Binding<Int> {
-        Binding(
-            get: { project.estimatedPageCount },
-            set: { value in store.updateSelectedProject { $0.estimatedPageCount = max(0, value) } }
         )
     }
 
@@ -2249,6 +2496,94 @@ struct CoverDesignerView: View {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {
             store.storeErrorMessage = error.localizedDescription
+        }
+    }
+}
+
+/// Local-draft number field — avoids cursor jumps from model updates while typing.
+private struct CoverInspectorNumberField: View {
+    let value: Double
+    var fractionDigits: Int = 1
+    var width: CGFloat = 72
+    let onCommit: (Double) -> Void
+    var onEditingChanged: ((Bool) -> Void)? = nil
+
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("", text: $draft)
+            .textFieldStyle(.roundedBorder)
+            .foregroundStyle(Color(nsColor: .textColor))
+            .frame(width: width)
+            .focused($isFocused)
+            .onAppear { syncDraft() }
+            .onChange(of: value) { _ in
+                if !isFocused { syncDraft() }
+            }
+            .onChange(of: isFocused) { focused in
+                onEditingChanged?(focused)
+                if !focused { commitDraft() }
+            }
+            .onSubmit { commitDraft() }
+    }
+
+    private func syncDraft() {
+        if fractionDigits == 0 {
+            draft = String(Int(value.rounded()))
+        } else {
+            draft = value.formatted(.number.precision(.fractionLength(fractionDigits)))
+        }
+    }
+
+    private func commitDraft() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let parsed = Double(trimmed) else {
+            syncDraft()
+            return
+        }
+        let rounded = fractionDigits == 0 ? Double(Int(parsed.rounded())) : parsed
+        if abs(rounded - value) > 0.000_1 {
+            onCommit(rounded)
+        }
+    }
+}
+
+/// Local-draft text field for inspector strings.
+private struct CoverInspectorTextField: View {
+    let value: String
+    var placeholder: String = ""
+    var isBold: Bool = false
+    let onCommit: (String) -> Void
+    var onEditingChanged: ((Bool) -> Void)? = nil
+
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField(placeholder, text: $draft)
+            .textFieldStyle(.roundedBorder)
+            .foregroundStyle(Color(nsColor: .textColor))
+            .fontWeight(isBold ? .semibold : .regular)
+            .focused($isFocused)
+            .onAppear { syncDraft() }
+            .onChange(of: value) { _ in
+                if !isFocused { syncDraft() }
+            }
+            .onChange(of: isFocused) { focused in
+                onEditingChanged?(focused)
+                if !focused { commitDraft() }
+            }
+            .onSubmit { commitDraft() }
+    }
+
+    private func syncDraft() {
+        draft = value
+    }
+
+    private func commitDraft() {
+        if draft != value {
+            onCommit(draft)
         }
     }
 }
@@ -2405,6 +2740,8 @@ private struct CoverSelectionChrome: View {
 
     private let handleSize: CGFloat = 9
     private let rotateReach: CGFloat = 28
+    /// Keep the delete badge clear of the top-trailing resize handle hit area.
+    private var deleteBadgeOffset: CGFloat { handleSize + 14 }
 
     var body: some View {
         ZStack {
@@ -2432,7 +2769,7 @@ private struct CoverSelectionChrome: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            .offset(x: 10, y: -10)
+            .offset(x: deleteBadgeOffset, y: -deleteBadgeOffset)
             .help("Delete selected element")
         }
         .compositingGroup()

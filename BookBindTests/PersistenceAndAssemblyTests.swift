@@ -109,6 +109,45 @@ final class PersistenceAndAssemblyTests: XCTestCase {
     }
 
     @MainActor
+    func testBindingStyleChangeSyncsProjectArchitecture() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("app-state.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let store = AppStore(projectStore: ProjectStore(fileURL: url))
+        store.startQuickWork(.imposition)
+        let projectID = try XCTUnwrap(store.projects.first?.id)
+
+        store.workspace(for: projectID).job.bindingStyle = .perfectBound
+        store.syncProjectArchitectureFromImposition(projectID: projectID)
+
+        XCTAssertEqual(store.projects.first?.architecture, .perfectBound)
+    }
+
+    @MainActor
+    func testCreateMasterworkAppliesArchitectureCoverDefaults() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("app-state.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let store = AppStore(projectStore: ProjectStore(fileURL: url))
+        store.createMasterwork(
+            title: "Perfect",
+            author: "",
+            heightMM: 229,
+            widthMM: 152,
+            architecture: .perfectBound
+        )
+
+        let project = store.projects[0]
+        XCTAssertEqual(project.boardThicknessMM, 0.35, accuracy: 0.001)
+        XCTAssertEqual(project.hingeGapMM, 0, accuracy: 0.001)
+        XCTAssertEqual(store.workspace(for: project.id).job.bindingStyle, .perfectBound)
+    }
+
+    @MainActor
     func testUnlockCoverSeedsBoardFromImpositionPaper() {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

@@ -23,7 +23,7 @@ enum ImpositionService {
             pagesPerSignature = ((rawTotal + 3) / 4) * 4
             signatureCount = pagesPerSignature == 0 ? 0 : 1
             padPages = max(0, pagesPerSignature - rawTotal)
-        case .sectionSewn:
+        case .caseBound, .sectionSewn, .perfectBound, .coptic:
             let size = job.signatureSize.rawValue
             pagesPerSignature = size
             let padded = ((rawTotal + size - 1) / size) * size
@@ -170,7 +170,7 @@ enum ImpositionService {
                 let rightPage = rightGlobal.flatMap { bookBlock.page(at: $0) }
 
                 let signatureLabel: String? = {
-                    guard showGuideMarks, style == .sectionSewn else { return nil }
+                    guard showGuideMarks, style.usesSignatures else { return nil }
                     return "Sig \(sig + 1)"
                 }()
 

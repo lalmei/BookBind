@@ -168,10 +168,13 @@ struct ImpositionWorkbenchView: View {
                             }
                         }
                         .labelsHidden()
-                        .onChange(of: workspace.job.bindingStyle) { _ in workspace.refreshPlan() }
+                        .onChange(of: workspace.job.bindingStyle) { _ in
+                            workspace.refreshPlan()
+                            syncProjectArchitecture()
+                        }
                     }
 
-                    if workspace.job.bindingStyle == .sectionSewn {
+                    if workspace.job.bindingStyle.usesSignatures {
                         labeledControl("Signature") {
                             Picker("", selection: $workspace.job.signatureSize) {
                                 ForEach(SignatureSize.allCases) { size in
@@ -723,6 +726,11 @@ struct ImpositionWorkbenchView: View {
     private func syncProjectTrimFromPaper() {
         guard let projectID else { return }
         store.syncProjectTrimFromImposition(projectID: projectID)
+    }
+
+    private func syncProjectArchitecture() {
+        guard let projectID else { return }
+        store.syncProjectArchitectureFromImposition(projectID: projectID)
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {

@@ -191,9 +191,7 @@ final class AppStore: ObservableObject {
             enabledTools: enabledTools
         )
         let defaultGSM = defaults.double(forKey: "defaultPaperGSM")
-        if defaultGSM > 0 {
-            project.textPaperGSM = defaultGSM
-        }
+        project.applyCoverDefaults(for: architecture, textPaperGSM: defaultGSM > 0 ? defaultGSM : nil)
         projects.insert(project, at: 0)
         let workspace = workspace(for: project.id)
         workspace.job.showGuideMarks = defaults.bool(forKey: "preferGuideMarks")
@@ -220,6 +218,16 @@ final class AppStore: ObservableObject {
         guard project.widthMM != projects[index].widthMM
             || project.heightMM != projects[index].heightMM else { return }
         projects[index] = project
+        projects[index].updatedAt = Date()
+        save()
+    }
+
+    /// Keeps the project subtitle in sync when imposition binding style changes.
+    func syncProjectArchitectureFromImposition(projectID: UUID) {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        let architecture = workspace(for: projectID).job.bindingStyle.architecture
+        guard projects[index].architecture != architecture else { return }
+        projects[index].architecture = architecture
         projects[index].updatedAt = Date()
         save()
     }

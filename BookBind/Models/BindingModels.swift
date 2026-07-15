@@ -3,18 +3,43 @@ import PDFKit
 
 /// How sheets are nested for sewing or stitching.
 enum BindingStyle: String, CaseIterable, Identifiable, Codable {
+    case caseBound = "Case-bound"
     case sectionSewn = "Section-sewn"
+    case perfectBound = "Perfect-bound"
+    case coptic = "Coptic"
     case saddleStitch = "Saddle-stitch"
 
     var id: String { rawValue }
 
     var help: String {
         switch self {
+        case .caseBound:
+            return "Sewn signatures in a hard case — Auto cover uses 2 mm boards and 8 mm French grooves."
         case .sectionSewn:
-            return "Multiple signatures of a fixed page count — typical for casebound and sewn books."
+            return "Sewn softcover — thinner boards and smaller grooves than a case binding."
+        case .perfectBound:
+            return "Trimmed block with a square-back cover wrap — no hinge gap; spine follows the glued block."
+        case .coptic:
+            return "Exposed chain-stitch spine — no case boards; spine adds sewing ridges only."
         case .saddleStitch:
-            return "One nested signature for the whole book — pamphlets and thin booklets."
+            return "One nested signature — pamphlet cover wrap with minimal spine bulge."
         }
+    }
+
+    /// Canonical masterwork architecture for this imposition style.
+    var architecture: BindingArchitecture {
+        switch self {
+        case .caseBound: return .caseBound
+        case .sectionSewn: return .sectionSewn
+        case .perfectBound: return .perfectBound
+        case .coptic: return .coptic
+        case .saddleStitch: return .saddleStitch
+        }
+    }
+
+    /// Signature size applies to every style except saddle-stitch pamphlets.
+    var usesSignatures: Bool {
+        self != .saddleStitch
     }
 }
 
@@ -197,10 +222,11 @@ struct BindingJob: Equatable, Codable {
     /// Apply a known binding architecture when it maps onto an impose style.
     mutating func applyArchitecture(_ architecture: BindingArchitecture) {
         switch architecture {
-        case .saddleStitch:
-            bindingStyle = .saddleStitch
-        case .sectionSewn, .caseBound, .coptic, .perfectBound:
-            bindingStyle = .sectionSewn
+        case .caseBound: bindingStyle = .caseBound
+        case .sectionSewn: bindingStyle = .sectionSewn
+        case .perfectBound: bindingStyle = .perfectBound
+        case .coptic: bindingStyle = .coptic
+        case .saddleStitch: bindingStyle = .saddleStitch
         }
     }
 }

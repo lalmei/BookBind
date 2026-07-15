@@ -33,8 +33,38 @@ enum BindingMath {
         boardThicknessMM: Double,
         hingeGapMM: Double
     ) -> Double {
+        spineWidthMM(
+            architecture: .caseBound,
+            pageCount: pageCount,
+            gsm: gsm,
+            boardThicknessMM: boardThicknessMM,
+            hingeGapMM: hingeGapMM
+        )
+    }
+
+    /// Spine midsection width for a binding architecture (text block + wrap allowances).
+    static func spineWidthMM(
+        architecture: BindingArchitecture,
+        pageCount: Int,
+        gsm: Double,
+        boardThicknessMM: Double,
+        hingeGapMM: Double
+    ) -> Double {
         let block = textBlockThicknessMM(pageCount: pageCount, gsm: gsm)
-        return block + (boardThicknessMM * 2) + (hingeGapMM * 2)
+        switch architecture {
+        case .caseBound, .sectionSewn:
+            return block + (boardThicknessMM * 2) + (hingeGapMM * 2)
+        case .perfectBound:
+            // Square-back cover wrap with a small turn-in beyond the trimmed block.
+            return block + (boardThicknessMM * 2) + 1.5
+        case .coptic:
+            // Exposed chain-stitch ridges on each side; boards do not wrap the spine.
+            let sewingRidgeMM = 3.0
+            return block + (sewingRidgeMM * 2)
+        case .saddleStitch:
+            // Nested folio + cover fold with staple bulge.
+            return block + (boardThicknessMM * 2) + 0.5
+        }
     }
 
     /// Suggested creep (PDF points) for a signature from GSM and sheets-per-signature.

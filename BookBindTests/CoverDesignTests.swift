@@ -244,7 +244,7 @@ final class CoverDesignTests: XCTestCase {
     }
 
     func testEffectiveSpineWidthUsesOverrideAndRoundTrips() throws {
-        var project = BinderyProject(title: "Dune", heightMM: 297, widthMM: 210)
+        var project = BinderyProject(title: "Dune", heightMM: 297, widthMM: 210, architecture: .caseBound)
         project.textPaperGSM = 80
         project.boardThicknessMM = 2
         project.hingeGapMM = 8
@@ -252,7 +252,13 @@ final class CoverDesignTests: XCTestCase {
         let computed = project.effectiveSpineWidthMM(pageCount: 256)
         XCTAssertEqual(
             computed,
-            BindingMath.caseSpineWidthMM(pageCount: 256, gsm: 80, boardThicknessMM: 2, hingeGapMM: 8),
+            BindingMath.spineWidthMM(
+                architecture: .caseBound,
+                pageCount: 256,
+                gsm: 80,
+                boardThicknessMM: 2,
+                hingeGapMM: 8
+            ),
             accuracy: 0.001
         )
 
