@@ -33,39 +33,43 @@ enum PageDecorationService {
                 }
             }
 
-            let decorated = renderDecoratedPage(
+            let data = renderDecoratedPageData(
                 page: page,
                 bounds: bounds,
                 numberText: numberText,
                 numberOptions: pageNumbers,
                 watermark: watermark.enabled ? watermark : nil,
-                pageIndex: index,
-                totalPages: total
+                pageIndex: index
             )
-            output.insert(decorated, at: index)
+
+            // Insert while the temporary document is alive to avoid blank pages.
+            if let doc = PDFDocument(data: data), let decorated = doc.page(at: 0) {
+                output.insert(decorated, at: output.pageCount)
+            } else if let copy = PDFDocumentService.copyPage(page) {
+                output.insert(copy, at: output.pageCount)
+            }
         }
 
         return output
     }
 
-    private static func renderDecoratedPage(
+    private static func renderDecoratedPageData(
         page: PDFPage,
         bounds: CGRect,
         numberText: String?,
         numberOptions: PageNumberOptions,
         watermark: WatermarkOptions?,
-        pageIndex: Int,
-        totalPages: Int
-    ) -> PDFPage {
+        pageIndex: Int
+    ) -> Data {
         let mutableData = NSMutableData()
         var mediaBox = bounds
         guard let consumer = CGDataConsumer(data: mutableData as CFMutableData),
               let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
-            return page
+            return Data()
         }
 
         context.beginPage(mediaBox: &mediaBox)
-        page.draw(with: .mediaBox, to: context)
+        PDFPageDrawing.draw(page, in: context, dest: bounds)
 
         if let watermark {
             drawWatermark(watermark, in: context, bounds: bounds)
@@ -83,11 +87,7 @@ enum PageDecorationService {
 
         context.endPage()
         context.closePDF()
-
-        if let doc = PDFDocument(data: mutableData as Data), let newPage = doc.page(at: 0) {
-            return newPage
-        }
-        return page
+        return mutableData as Data
     }
 
     private static func drawWatermark(_ options: WatermarkOptions, in context: CGContext, bounds: CGRect) {
@@ -135,8 +135,6 @@ enum PageDecorationService {
             x = bounds.midX - lineBounds.width / 2
             y = bounds.height - margin - lineBounds.height
         case .bottomOuter:
-            // Odd pages (recto, 0-based even index after start) → outer right; verso → outer left.
-            // Approximate: even index = verso (left), odd = recto (right) for 0-based content.
             let isRecto = pageIndex % 2 == 1
             x = isRecto ? bounds.width - margin - lineBounds.width : margin
             y = margin
