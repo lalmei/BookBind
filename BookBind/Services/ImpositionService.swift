@@ -132,6 +132,7 @@ enum ImpositionService {
         addCropMarks: Bool,
         showGuideMarks: Bool,
         showStitchHoleMarks: Bool = false,
+        stitchHoleCount: StitchHoleCount = .auto,
         creepPoints: CGFloat = 0,
         bleedPoints: CGFloat = 0
     ) throws -> PDFDocument {
@@ -151,6 +152,14 @@ enum ImpositionService {
         let sheetsPerSignature = max(1, signatureLength / 4)
         let creep = max(0, creepPoints)
         let bleed = max(0, bleedPoints)
+        let drawStitchMarks = showStitchHoleMarks && style.usesStitchHoleMarks
+        let resolvedStitchHoles = drawStitchMarks
+            ? resolvedStitchHoleCount(
+                setting: stitchHoleCount,
+                sheetCount: plan.sheetCount,
+                pageHeight: pageSize.height
+            )
+            : 0
 
         for sig in 0..<signatureCount {
             let start = sig * signatureLength
@@ -189,7 +198,7 @@ enum ImpositionService {
                     bounds: spreadBounds,
                     addCropMarks: addCropMarks,
                     showFoldLine: showGuideMarks,
-                    showStitchHoleMarks: showStitchHoleMarks && style.usesStitchHoleMarks,
+                    stitchHoleCount: resolvedStitchHoles,
                     signatureLabel: signatureLabel,
                     creepOffset: offset,
                     bleed: bleed
@@ -239,22 +248,78 @@ enum ImpositionService {
         return SignatureMap(sides: sides, plan: plan)
     }
 
-    /// Standard saddle-stitch punch positions along the fold (PDF coordinates).
+    /// Suggested staple count from nested sheet count and trim height.
+    static func recommendedStitchHoleCount(sheetCount: Int, pageHeight: CGFloat) -> Int {
+        if pageHeight < 72 { return 1 }
+        if sheetCount >= 5 { return 3 }
+        return 2
+    }
+
+    /// Resolve Auto or an explicit 1/2/3 choice, clamped to what fits the trim height.
+    static func resolvedStitchHoleCount(
+        setting: StitchHoleCount,
+        sheetCount: Int,
+        pageHeight: CGFloat
+    ) -> Int {
+        let requested: Int
+        switch setting {
+        case .auto:
+            requested = recommendedStitchHoleCount(sheetCount: sheetCount, pageHeight: pageHeight)
+        case .one:
+            requested = 1
+        case .two:
+            requested = 2
+        case .three:
+            requested = 3
+        }
+        return clampedStitchHoleCount(requested, pageHeight: pageHeight)
+    }
+
+    private static func clampedStitchHoleCount(_ requested: Int, pageHeight: CGFloat) -> Int {
+        let clamped = max(1, min(3, requested))
+        var effective = clamped
+        while effective > 1, pageHeight < minimumTrimHeight(forStitchHoles: effective) {
+            effective -= 1
+        }
+        return effective
+    }
+
+    private static func minimumTrimHeight(forStitchHoles count: Int) -> CGFloat {
+        switch count {
+        case 1: return 36
+        case 2: return 72
+        default: return 108
+        }
+    }
+
+    /// Saddle-stitch punch positions along the fold (PDF coordinates).
     static func stitchHoleCenters(
         spineX: CGFloat,
         trimOrigin: CGPoint,
-        pageSize: CGSize
+        pageSize: CGSize,
+        holeCount: Int
     ) -> [CGPoint] {
+        let count = clampedStitchHoleCount(holeCount, pageHeight: pageSize.height)
         let inset = min(36, pageSize.height * 0.25)
-        let topY = trimOrigin.y + pageSize.height - inset
         let bottomY = trimOrigin.y + inset
-        guard pageSize.height >= 72, topY - bottomY >= inset * 2 else {
-            return [CGPoint(x: spineX, y: trimOrigin.y + pageSize.height / 2)]
+        let topY = trimOrigin.y + pageSize.height - inset
+        let midY = trimOrigin.y + pageSize.height / 2
+
+        switch count {
+        case 1:
+            return [CGPoint(x: spineX, y: midY)]
+        case 2:
+            return [
+                CGPoint(x: spineX, y: topY),
+                CGPoint(x: spineX, y: bottomY)
+            ]
+        default:
+            return [
+                CGPoint(x: spineX, y: topY),
+                CGPoint(x: spineX, y: midY),
+                CGPoint(x: spineX, y: bottomY)
+            ]
         }
-        return [
-            CGPoint(x: spineX, y: topY),
-            CGPoint(x: spineX, y: bottomY)
-        ]
     }
 
     private static func renderSpreadPDF(
@@ -264,7 +329,7 @@ enum ImpositionService {
         bounds: CGRect,
         addCropMarks: Bool,
         showFoldLine: Bool,
-        showStitchHoleMarks: Bool,
+        stitchHoleCount: Int,
         signatureLabel: String?,
         creepOffset: CGFloat,
         bleed: CGFloat
@@ -331,12 +396,13 @@ enum ImpositionService {
             )
         }
 
-        if showStitchHoleMarks {
+        if stitchHoleCount > 0 {
             drawStitchHoleMarks(
                 in: context,
                 spineX: spineX,
                 trimOrigin: trimOrigin,
-                pageSize: pageSize
+                pageSize: pageSize,
+                holeCount: stitchHoleCount
             )
         }
 
@@ -434,13 +500,15 @@ enum ImpositionService {
         in context: CGContext,
         spineX: CGFloat,
         trimOrigin: CGPoint,
-        pageSize: CGSize
+        pageSize: CGSize,
+        holeCount: Int
     ) {
         let radius: CGFloat = 2.5
         let centers = stitchHoleCenters(
             spineX: spineX,
             trimOrigin: trimOrigin,
-            pageSize: pageSize
+            pageSize: pageSize,
+            holeCount: holeCount
         )
 
         context.saveGState()

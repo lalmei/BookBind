@@ -75,6 +75,33 @@ final class ImpositionTests: XCTestCase {
         XCTAssertEqual(ImpositionService.creepOffset(sheetIndex: 2, sheetCount: 4, totalCreep: 0), 0)
     }
 
+    func testRecommendedStitchHoleCountScalesWithSheets() {
+        XCTAssertEqual(ImpositionService.recommendedStitchHoleCount(sheetCount: 2, pageHeight: 792), 2)
+        XCTAssertEqual(ImpositionService.recommendedStitchHoleCount(sheetCount: 4, pageHeight: 792), 2)
+        XCTAssertEqual(ImpositionService.recommendedStitchHoleCount(sheetCount: 5, pageHeight: 792), 3)
+        XCTAssertEqual(ImpositionService.recommendedStitchHoleCount(sheetCount: 8, pageHeight: 792), 3)
+        XCTAssertEqual(ImpositionService.recommendedStitchHoleCount(sheetCount: 2, pageHeight: 60), 1)
+    }
+
+    func testResolvedStitchHoleCountHonorsAutoAndExplicitChoices() {
+        XCTAssertEqual(
+            ImpositionService.resolvedStitchHoleCount(setting: .auto, sheetCount: 2, pageHeight: 792),
+            2
+        )
+        XCTAssertEqual(
+            ImpositionService.resolvedStitchHoleCount(setting: .auto, sheetCount: 6, pageHeight: 792),
+            3
+        )
+        XCTAssertEqual(
+            ImpositionService.resolvedStitchHoleCount(setting: .three, sheetCount: 2, pageHeight: 792),
+            3
+        )
+        XCTAssertEqual(
+            ImpositionService.resolvedStitchHoleCount(setting: .three, sheetCount: 2, pageHeight: 60),
+            1
+        )
+    }
+
     func testStitchHoleCentersUseHeadAndFootInsets() {
         let trimOrigin = CGPoint(x: 14, y: 14)
         let pageSize = CGSize(width: 100, height: 200)
@@ -83,7 +110,8 @@ final class ImpositionTests: XCTestCase {
         let centers = ImpositionService.stitchHoleCenters(
             spineX: spineX,
             trimOrigin: trimOrigin,
-            pageSize: pageSize
+            pageSize: pageSize,
+            holeCount: 2
         )
 
         XCTAssertEqual(centers.count, 2)
@@ -91,6 +119,24 @@ final class ImpositionTests: XCTestCase {
         XCTAssertEqual(centers[1].x, spineX, accuracy: 0.001)
         XCTAssertEqual(centers[0].y, trimOrigin.y + pageSize.height - 36, accuracy: 0.001)
         XCTAssertEqual(centers[1].y, trimOrigin.y + 36, accuracy: 0.001)
+    }
+
+    func testStitchHoleCentersPlaceThreeAlongFold() {
+        let trimOrigin = CGPoint(x: 0, y: 0)
+        let pageSize = CGSize(width: 100, height: 200)
+        let spineX: CGFloat = 100
+
+        let centers = ImpositionService.stitchHoleCenters(
+            spineX: spineX,
+            trimOrigin: trimOrigin,
+            pageSize: pageSize,
+            holeCount: 3
+        )
+
+        XCTAssertEqual(centers.count, 3)
+        XCTAssertEqual(centers[0].y, 164, accuracy: 0.001)
+        XCTAssertEqual(centers[1].y, 100, accuracy: 0.001)
+        XCTAssertEqual(centers[2].y, 36, accuracy: 0.001)
     }
 
     func testStitchHoleCentersFallbackToCenterOnShortPages() {
@@ -101,7 +147,8 @@ final class ImpositionTests: XCTestCase {
         let centers = ImpositionService.stitchHoleCenters(
             spineX: spineX,
             trimOrigin: trimOrigin,
-            pageSize: pageSize
+            pageSize: pageSize,
+            holeCount: 2
         )
 
         XCTAssertEqual(centers.count, 1)

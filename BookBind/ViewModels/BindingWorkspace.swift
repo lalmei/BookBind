@@ -245,6 +245,7 @@ final class BindingWorkspace: ObservableObject {
                     addCropMarks: jobSnapshot.addCropMarks,
                     showGuideMarks: jobSnapshot.showGuideMarks,
                     showStitchHoleMarks: jobSnapshot.showStitchHoleMarks,
+                    stitchHoleCount: jobSnapshot.stitchHoleCount,
                     creepPoints: jobSnapshot.creepPoints,
                     bleedPoints: jobSnapshot.bleedPoints
                 )
