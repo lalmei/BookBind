@@ -25,6 +25,29 @@ enum BindingArchitecture: String, CaseIterable, Identifiable, Codable {
             return "Multiple sewn signatures — typical for durable hardbacks."
         }
     }
+
+    /// Recommended cover measurements when resetting Auto fields in the designer.
+    var coverDefaults: CoverMeasurementDefaults {
+        switch self {
+        case .caseBound:
+            return CoverMeasurementDefaults(boardThicknessMM: 2.0, hingeGapMM: 8.0, textPaperGSM: 80)
+        case .sectionSewn:
+            return CoverMeasurementDefaults(boardThicknessMM: 0.6, hingeGapMM: 4.0, textPaperGSM: 80)
+        case .perfectBound:
+            return CoverMeasurementDefaults(boardThicknessMM: 0.35, hingeGapMM: 0, textPaperGSM: 80)
+        case .coptic:
+            return CoverMeasurementDefaults(boardThicknessMM: 0, hingeGapMM: 0, textPaperGSM: 80)
+        case .saddleStitch:
+            return CoverMeasurementDefaults(boardThicknessMM: 0.25, hingeGapMM: 0, textPaperGSM: 90)
+        }
+    }
+}
+
+/// Auto-reset targets for cover board, groove, and paper — keyed to binding architecture.
+struct CoverMeasurementDefaults: Equatable {
+    var boardThicknessMM: Double
+    var hingeGapMM: Double
+    var textPaperGSM: Double
 }
 
 /// A cover/spine material option for the designer.
@@ -173,7 +196,7 @@ enum CoverShapeType: String, CaseIterable, Identifiable, Codable, Hashable {
     var systemImage: String {
         switch self {
         case .rectangle: return "rectangle"
-        case .ellipse: return "circle"
+        case .ellipse: return "oval"
         case .line: return "line.diagonal"
         }
     }
@@ -423,8 +446,8 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
 
     var listIconName: String {
         switch kind {
-        case .text: return "textformat"
-        case .image: return "photo"
+        case .text: return "character.cursor.ibeam"
+        case .image: return "photo.on.rectangle"
         case .shape: return shapeType.systemImage
         }
     }
@@ -669,17 +692,31 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         case materials, textPaperGSM, estimatedPageCount, enabledTools
     }
 
-    /// Spine midsection used for layout: the manual override when set, else the computed case-spine width.
+    /// Spine midsection used for layout: the manual override when set, else the computed width for `architecture`.
     func effectiveSpineWidthMM(pageCount: Int) -> Double {
         if let spineWidthOverrideMM, spineWidthOverrideMM > 0 {
             return spineWidthOverrideMM
         }
-        return BindingMath.caseSpineWidthMM(
+        return BindingMath.spineWidthMM(
+            architecture: architecture,
             pageCount: max(pageCount, 0),
             gsm: textPaperGSM,
             boardThicknessMM: boardThicknessMM,
             hingeGapMM: hingeGapMM
         )
+    }
+
+    /// Apply architecture-typical board, groove, and paper defaults (Auto targets in the cover designer).
+    mutating func applyCoverDefaults(for architecture: BindingArchitecture, textPaperGSM overrideGSM: Double? = nil) {
+        self.architecture = architecture
+        let defaults = architecture.coverDefaults
+        boardThicknessMM = defaults.boardThicknessMM
+        hingeGapMM = defaults.hingeGapMM
+        if let overrideGSM {
+            textPaperGSM = overrideGSM
+        } else {
+            textPaperGSM = defaults.textPaperGSM
+        }
     }
 
     /// Ensure design layers + editable stamps exist; migrate legacy `folioStampText` when present.

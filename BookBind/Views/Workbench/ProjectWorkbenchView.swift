@@ -8,6 +8,9 @@ struct ProjectWorkbenchView: View {
     let project: BinderyProject
     @ObservedObject var workspace: BindingWorkspace
     @State private var toolPendingUnlock: ProjectTool?
+    @State private var isEditingTitle = false
+    @State private var titleDraft = ""
+    @FocusState private var isTitleFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,9 +49,7 @@ struct ProjectWorkbenchView: View {
     private var workbenchHeader: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(project.title)
-                    .font(ArtisanTheme.sectionFont)
-                    .foregroundStyle(headerTitleColor)
+                projectTitleView
                 Text(project.displaySubtitle)
                     .font(.caption)
                     .foregroundStyle(headerSubtitleColor)
@@ -58,6 +59,58 @@ struct ProjectWorkbenchView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(.bar)
+    }
+
+    @ViewBuilder
+    private var projectTitleView: some View {
+        if isEditingTitle {
+            TextField("Project name", text: $titleDraft)
+                .textFieldStyle(.plain)
+                .font(ArtisanTheme.sectionFont)
+                .foregroundStyle(headerTitleColor)
+                .lineLimit(1)
+                .focused($isTitleFieldFocused)
+                .onSubmit { commitTitleEdit() }
+                .onChange(of: isTitleFieldFocused) { focused in
+                    guard !focused, isEditingTitle else { return }
+                    commitTitleEdit()
+                }
+                .onExitCommand { cancelTitleEdit() }
+        } else {
+            Text(project.title)
+                .font(ArtisanTheme.sectionFont)
+                .foregroundStyle(headerTitleColor)
+                .help("Double-click to rename")
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { beginTitleEdit() }
+        }
+    }
+
+    private func beginTitleEdit() {
+        titleDraft = project.title
+        isEditingTitle = true
+        DispatchQueue.main.async {
+            isTitleFieldFocused = true
+        }
+    }
+
+    private func commitTitleEdit() {
+        isEditingTitle = false
+        isTitleFieldFocused = false
+
+        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            titleDraft = project.title
+            return
+        }
+        guard trimmed != project.title else { return }
+        store.renameProject(project.id, title: trimmed, author: project.author)
+    }
+
+    private func cancelTitleEdit() {
+        isEditingTitle = false
+        titleDraft = project.title
+        isTitleFieldFocused = false
     }
 
     /// Brand navy is for light paper surfaces only — never on a dark window bar.

@@ -69,11 +69,53 @@ final class BindingMathTests: XCTestCase {
         XCTAssertEqual(project.heightMM, BindingMath.millimeters(fromPoints: 792), accuracy: 0.15)
     }
 
-    func testSaddleArchitectureMapsToImposeStyle() {
+    func testSpineWidthVariesByArchitecture() {
+        let pages = 200
+        let gsm = 80.0
+        let caseSpine = BindingMath.spineWidthMM(
+            architecture: .caseBound,
+            pageCount: pages,
+            gsm: gsm,
+            boardThicknessMM: 2,
+            hingeGapMM: 8
+        )
+        let perfectSpine = BindingMath.spineWidthMM(
+            architecture: .perfectBound,
+            pageCount: pages,
+            gsm: gsm,
+            boardThicknessMM: 0.35,
+            hingeGapMM: 0
+        )
+        let copticSpine = BindingMath.spineWidthMM(
+            architecture: .coptic,
+            pageCount: pages,
+            gsm: gsm,
+            boardThicknessMM: 0,
+            hingeGapMM: 0
+        )
+        let saddleSpine = BindingMath.spineWidthMM(
+            architecture: .saddleStitch,
+            pageCount: pages,
+            gsm: gsm,
+            boardThicknessMM: 0.25,
+            hingeGapMM: 0
+        )
+        XCTAssertGreaterThan(caseSpine, copticSpine)
+        XCTAssertGreaterThan(copticSpine, perfectSpine)
+        XCTAssertGreaterThan(perfectSpine, saddleSpine)
+    }
+
+    func testArchitectureMapsToMatchingImposeStyle() {
         var job = BindingJob()
+        job.applyArchitecture(.caseBound)
+        XCTAssertEqual(job.bindingStyle, .caseBound)
+        job.applyArchitecture(.sectionSewn)
+        XCTAssertEqual(job.bindingStyle, .sectionSewn)
+        job.applyArchitecture(.perfectBound)
+        XCTAssertEqual(job.bindingStyle, .perfectBound)
+        job.applyArchitecture(.coptic)
+        XCTAssertEqual(job.bindingStyle, .coptic)
         job.applyArchitecture(.saddleStitch)
         XCTAssertEqual(job.bindingStyle, .saddleStitch)
-        job.applyArchitecture(.caseBound)
-        XCTAssertEqual(job.bindingStyle, .sectionSewn)
     }
 }
