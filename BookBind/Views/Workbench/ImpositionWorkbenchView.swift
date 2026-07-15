@@ -270,6 +270,10 @@ struct ImpositionWorkbenchView: View {
                     Toggle("Crop marks", isOn: $workspace.job.addCropMarks)
                     Toggle("Guide marks", isOn: $workspace.job.showGuideMarks)
                         .help("Fold line and signature labels on printer spreads")
+                    if workspace.job.bindingStyle.usesStitchHoleMarks {
+                        Toggle("Stitch hole marks", isOn: $workspace.job.showStitchHoleMarks)
+                            .help("Punch positions on the fold for saddle-stitch stapling")
+                    }
                 }
 
                 collapsibleSection("Endpapers", isExpanded: $endpapersExpanded) {

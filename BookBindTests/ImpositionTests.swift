@@ -75,6 +75,39 @@ final class ImpositionTests: XCTestCase {
         XCTAssertEqual(ImpositionService.creepOffset(sheetIndex: 2, sheetCount: 4, totalCreep: 0), 0)
     }
 
+    func testStitchHoleCentersUseHeadAndFootInsets() {
+        let trimOrigin = CGPoint(x: 14, y: 14)
+        let pageSize = CGSize(width: 100, height: 200)
+        let spineX = trimOrigin.x + pageSize.width
+
+        let centers = ImpositionService.stitchHoleCenters(
+            spineX: spineX,
+            trimOrigin: trimOrigin,
+            pageSize: pageSize
+        )
+
+        XCTAssertEqual(centers.count, 2)
+        XCTAssertEqual(centers[0].x, spineX, accuracy: 0.001)
+        XCTAssertEqual(centers[1].x, spineX, accuracy: 0.001)
+        XCTAssertEqual(centers[0].y, trimOrigin.y + pageSize.height - 36, accuracy: 0.001)
+        XCTAssertEqual(centers[1].y, trimOrigin.y + 36, accuracy: 0.001)
+    }
+
+    func testStitchHoleCentersFallbackToCenterOnShortPages() {
+        let trimOrigin = CGPoint(x: 0, y: 0)
+        let pageSize = CGSize(width: 100, height: 40)
+        let spineX: CGFloat = 100
+
+        let centers = ImpositionService.stitchHoleCenters(
+            spineX: spineX,
+            trimOrigin: trimOrigin,
+            pageSize: pageSize
+        )
+
+        XCTAssertEqual(centers.count, 1)
+        XCTAssertEqual(centers[0], CGPoint(x: spineX, y: 20))
+    }
+
     func testSpreadMediaIncludesBleedAndCropRoom() {
         let page = CGSize(width: 100, height: 200)
 

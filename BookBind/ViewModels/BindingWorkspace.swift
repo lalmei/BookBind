@@ -244,6 +244,7 @@ final class BindingWorkspace: ObservableObject {
                     style: jobSnapshot.bindingStyle,
                     addCropMarks: jobSnapshot.addCropMarks,
                     showGuideMarks: jobSnapshot.showGuideMarks,
+                    showStitchHoleMarks: jobSnapshot.showStitchHoleMarks,
                     creepPoints: jobSnapshot.creepPoints,
                     bleedPoints: jobSnapshot.bleedPoints
                 )
@@ -317,4 +318,25 @@ struct BindingWorkspaceState: Equatable, Codable {
     var sources: [SourceDocument] = []
     var job = BindingJob()
     var bookBlockItems: [BookBlockItem] = []
+}
+
+/// View/zoom state shared between the cover canvas and the workbench header.
+@MainActor
+final class CoverEditorChrome: ObservableObject {
+    enum ViewMode: String, CaseIterable, Identifiable {
+        case fit
+        case oneToOne
+
+        var id: String { rawValue }
+
+        var shortLabel: String {
+            switch self {
+            case .fit: return "Fit"
+            case .oneToOne: return "1:1"
+            }
+        }
+    }
+
+    @Published var viewMode: ViewMode = .fit
+    @Published var zoomFactor: Double = 1.0
 }
