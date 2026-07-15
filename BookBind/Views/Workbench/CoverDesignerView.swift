@@ -5,11 +5,11 @@ import UniformTypeIdentifiers
 struct CoverDesignerView: View {
     @EnvironmentObject private var store: AppStore
     let project: BinderyProject
+    @ObservedObject var workspace: BindingWorkspace
+    @ObservedObject var chrome: CoverEditorChrome
 
     @State private var selectedElementID: UUID?
     @State private var canvasTool: CanvasTool = .select
-    @State private var viewMode: ViewMode = .fit
-    @State private var zoomFactor: Double = 1.0
     @GestureState private var pinchMagnification: CGFloat = 1.0
     @State private var isDraggingElement = false
     @State private var elementDragOrigin: CGSize = .zero
@@ -76,22 +76,12 @@ struct CoverDesignerView: View {
         }
     }
 
-    private enum ViewMode: String, CaseIterable, Identifiable {
-        case fit
-        case oneToOne
-
-        var id: String { rawValue }
-
-        var shortLabel: String {
-            switch self {
-            case .fit: return "Fit"
-            case .oneToOne: return "1:1"
-            }
-        }
+    private var liveZoom: Double {
+        chrome.zoomFactor * Double(pinchMagnification)
     }
 
     private var pageCount: Int {
-        let fromWorkspace = store.workspace(for: project.id).assembledPageCount
+        let fromWorkspace = workspace.assembledPageCount
         if fromWorkspace > 0 { return fromWorkspace }
         return max(0, project.estimatedPageCount)
     }
@@ -430,6 +420,7 @@ struct CoverDesignerView: View {
                                     .frame(width: wrapSideRulerColumnWidth)
                                 wrapTopRuler(wrapW: wrapW, scale: scale)
                             }
+                            .fixedSize(horizontal: false, vertical: true)
                         } else {
                             dimensionBar(totalWidth: wrapW)
                         }
@@ -449,7 +440,8 @@ struct CoverDesignerView: View {
                     }
                     .frame(
                         minWidth: max(geo.size.width, wrapW + (showJointGuides ? 108 : 80)),
-                        minHeight: max(geo.size.height, wrapH + (showJointGuides ? 140 : 100))
+                        minHeight: max(geo.size.height, wrapH + (showJointGuides ? 140 : 100)),
+                        alignment: .top
                     )
                 }
 
@@ -553,10 +545,8 @@ struct CoverDesignerView: View {
             }
 
             ZStack(alignment: .topLeading) {
-                VStack(spacing: 0) {
-                    Spacer(minLength: rulerHeight - 12)
-                    panelBoundaryTicks(width: wrapW, scale: scale, tickHeight: 7)
-                }
+                panelBoundaryTicks(width: wrapW, scale: scale, tickHeight: 7)
+                    .frame(width: wrapW, height: rulerHeight, alignment: .bottomLeading)
 
                 ForEach(geometry.layoutPanels) { panel in
                     let origin = geometry.panelOriginX(panel) * scale
