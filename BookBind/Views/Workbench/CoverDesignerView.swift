@@ -193,10 +193,6 @@ struct CoverDesignerView: View {
         return project.coverElements.first { $0.id == id }
     }
 
-    private var liveZoom: Double {
-        zoomFactor * Double(pinchMagnification)
-    }
-
     /// Canvas + inspector split width.
     private var minimumSplitWidth: CGFloat {
         let canvasMin: CGFloat = 416
@@ -249,29 +245,10 @@ struct CoverDesignerView: View {
 
             finishToolStrip
 
-            Divider()
-                .frame(height: 22)
-
-            Picker("Scale", selection: $viewMode) {
-                ForEach(ViewMode.allCases) { mode in
-                    Text(mode.shortLabel).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 100)
-            .labelsHidden()
-
-            Button {
-                zoomFactor = 1.0
-            } label: {
-                Text(String(format: "%.0f%%", liveZoom * 100))
-                    .font(ArtisanTheme.technicalCaption)
-                    .monospacedDigit()
-            }
-            .buttonStyle(.borderless)
-            .help("Reset pinch zoom")
-
             if let finish = soloFinish {
+                Divider()
+                    .frame(height: 22)
+
                 Label("Solo \(finish.title)", systemImage: "eye")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -281,6 +258,9 @@ struct CoverDesignerView: View {
             }
 
             if selectedElementID != nil {
+                Divider()
+                    .frame(height: 22)
+
                 Button("Delete", role: .destructive) {
                     deleteSelected()
                 }
@@ -294,15 +274,6 @@ struct CoverDesignerView: View {
                 .lineLimit(1)
 
             Spacer()
-
-            Menu("Export") {
-                Button("SVG…") { exportSVG() }
-                Button("Blueprint PDF…") { exportPDF() }
-            }
-            .menuStyle(.borderlessButton)
-
-            Button("Export PDF…") { exportPDF() }
-                .buttonStyle(.bordered)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -446,12 +417,15 @@ struct CoverDesignerView: View {
                 }
 
                 CoverScrollZoomView { delta in
-                    zoomFactor = CoverEditorMath.zoomFactor(afterScrollDelta: delta, current: zoomFactor)
+                    chrome.zoomFactor = CoverEditorMath.zoomFactor(
+                        afterScrollDelta: delta,
+                        current: chrome.zoomFactor
+                    )
                 }
             }
             .gesture(magnificationGesture)
-            .onChange(of: viewMode) { _ in
-                zoomFactor = 1.0
+            .onChange(of: chrome.viewMode) { _ in
+                chrome.zoomFactor = 1.0
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
@@ -499,7 +473,7 @@ struct CoverDesignerView: View {
                 state = value
             }
             .onEnded { value in
-                zoomFactor = min(8, max(0.25, zoomFactor * Double(value)))
+                chrome.zoomFactor = min(8, max(0.25, chrome.zoomFactor * Double(value)))
             }
     }
 
@@ -1309,7 +1283,7 @@ struct CoverDesignerView: View {
     private func canvasScale(in size: CGSize) -> Double {
         let pad: CGFloat = 100
         let base: Double
-        switch viewMode {
+        switch chrome.viewMode {
         case .fit:
             let sx = max(40, size.width - pad) / geometry.totalW
             let sy = max(40, size.height - pad) / geometry.boardH
@@ -2441,52 +2415,6 @@ struct CoverDesignerView: View {
             get: { project.showDebossLayer },
             set: { value in store.updateSelectedProject { $0.showDebossLayer = value } }
         )
-    }
-
-    // MARK: - Export
-
-    private func exportPDF() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.pdf]
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = "\(project.title)-cover-blueprint.pdf"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try CoverBlueprintService.writeBlueprint(
-                for: project,
-                pageCount: pageCount,
-                spineWidthMM: spineWidth,
-                to: url
-            )
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch {
-            store.storeErrorMessage = error.localizedDescription
-        }
-    }
-
-    private func exportSVG() {
-        let panel = NSSavePanel()
-        if let svgType = UTType(filenameExtension: "svg") {
-            panel.allowedContentTypes = [svgType]
-        } else {
-            panel.allowedContentTypes = [.xml]
-        }
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = "\(project.title)-cover.svg"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try CoverBlueprintService.writeSVG(
-                for: project,
-                pageCount: pageCount,
-                spineWidthMM: spineWidth,
-                to: url
-            )
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch {
-            store.storeErrorMessage = error.localizedDescription
-        }
     }
 }
 

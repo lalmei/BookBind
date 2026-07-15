@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 enum CoverBlueprintService {
     /// Flat wrap regions: back · back joint · spine · front joint · front.
@@ -571,5 +572,79 @@ enum CoverBlueprintService {
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+// MARK: - Workbench export
+
+enum CoverExportService {
+    struct LayoutContext {
+        let pageCount: Int
+        let spineWidthMM: Double
+
+        @MainActor
+        init(project: BinderyProject, workspace: BindingWorkspace) {
+            let pages = workspace.assembledPageCount > 0
+                ? workspace.assembledPageCount
+                : max(0, project.estimatedPageCount)
+            pageCount = pages
+            spineWidthMM = project.effectiveSpineWidthMM(pageCount: pages)
+        }
+    }
+
+    @MainActor
+    static func exportBlueprintPDF(
+        project: BinderyProject,
+        workspace: BindingWorkspace,
+        store: AppStore
+    ) {
+        let layout = LayoutContext(project: project, workspace: workspace)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(project.title)-cover-blueprint.pdf"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try CoverBlueprintService.writeBlueprint(
+                for: project,
+                pageCount: layout.pageCount,
+                spineWidthMM: layout.spineWidthMM,
+                to: url
+            )
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            store.storeErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    static func exportSVG(
+        project: BinderyProject,
+        workspace: BindingWorkspace,
+        store: AppStore
+    ) {
+        let layout = LayoutContext(project: project, workspace: workspace)
+        let panel = NSSavePanel()
+        if let svgType = UTType(filenameExtension: "svg") {
+            panel.allowedContentTypes = [svgType]
+        } else {
+            panel.allowedContentTypes = [.xml]
+        }
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(project.title)-cover.svg"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try CoverBlueprintService.writeSVG(
+                for: project,
+                pageCount: layout.pageCount,
+                spineWidthMM: layout.spineWidthMM,
+                to: url
+            )
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            store.storeErrorMessage = error.localizedDescription
+        }
     }
 }
