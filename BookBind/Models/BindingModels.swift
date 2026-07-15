@@ -41,6 +41,11 @@ enum BindingStyle: String, CaseIterable, Identifiable, Codable {
     var usesSignatures: Bool {
         self != .saddleStitch
     }
+
+    /// Saddle-stitch pamphlets can show staple/punch marks on the fold.
+    var usesStitchHoleMarks: Bool {
+        self == .saddleStitch
+    }
 }
 
 /// Pages per signature (must be a multiple of 4 for folio folds).
@@ -182,6 +187,8 @@ struct BindingJob: Equatable, Codable {
     var addCropMarks = false
     /// Fold line + signature labels on printer spreads (handy for proofs; off for final print).
     var showGuideMarks = false
+    /// Punch/staple positions on the fold for saddle-stitch spreads.
+    var showStitchHoleMarks = false
     var paperSize: PaperSize = .source
     /// Used when `paperSize == .custom` (PDF points, 1/72").
     var customPageWidth: CGFloat = 612

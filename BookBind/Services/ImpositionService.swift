@@ -131,6 +131,7 @@ enum ImpositionService {
         style: BindingStyle,
         addCropMarks: Bool,
         showGuideMarks: Bool,
+        showStitchHoleMarks: Bool = false,
         creepPoints: CGFloat = 0,
         bleedPoints: CGFloat = 0
     ) throws -> PDFDocument {
@@ -188,6 +189,7 @@ enum ImpositionService {
                     bounds: spreadBounds,
                     addCropMarks: addCropMarks,
                     showFoldLine: showGuideMarks,
+                    showStitchHoleMarks: showStitchHoleMarks && style.usesStitchHoleMarks,
                     signatureLabel: signatureLabel,
                     creepOffset: offset,
                     bleed: bleed
@@ -237,6 +239,24 @@ enum ImpositionService {
         return SignatureMap(sides: sides, plan: plan)
     }
 
+    /// Standard saddle-stitch punch positions along the fold (PDF coordinates).
+    static func stitchHoleCenters(
+        spineX: CGFloat,
+        trimOrigin: CGPoint,
+        pageSize: CGSize
+    ) -> [CGPoint] {
+        let inset = min(36, pageSize.height * 0.25)
+        let topY = trimOrigin.y + pageSize.height - inset
+        let bottomY = trimOrigin.y + inset
+        guard pageSize.height >= 72, topY - bottomY >= inset * 2 else {
+            return [CGPoint(x: spineX, y: trimOrigin.y + pageSize.height / 2)]
+        }
+        return [
+            CGPoint(x: spineX, y: topY),
+            CGPoint(x: spineX, y: bottomY)
+        ]
+    }
+
     private static func renderSpreadPDF(
         left: PDFPage?,
         right: PDFPage?,
@@ -244,6 +264,7 @@ enum ImpositionService {
         bounds: CGRect,
         addCropMarks: Bool,
         showFoldLine: Bool,
+        showStitchHoleMarks: Bool,
         signatureLabel: String?,
         creepOffset: CGFloat,
         bleed: CGFloat
@@ -307,6 +328,15 @@ enum ImpositionService {
                 trimOrigin: trimOrigin,
                 pageSize: pageSize,
                 spreadBounds: bounds
+            )
+        }
+
+        if showStitchHoleMarks {
+            drawStitchHoleMarks(
+                in: context,
+                spineX: spineX,
+                trimOrigin: trimOrigin,
+                pageSize: pageSize
             )
         }
 
@@ -397,6 +427,37 @@ enum ImpositionService {
         _ = spreadBounds
 
         context.strokePath()
+        context.restoreGState()
+    }
+
+    private static func drawStitchHoleMarks(
+        in context: CGContext,
+        spineX: CGFloat,
+        trimOrigin: CGPoint,
+        pageSize: CGSize
+    ) {
+        let radius: CGFloat = 2.5
+        let centers = stitchHoleCenters(
+            spineX: spineX,
+            trimOrigin: trimOrigin,
+            pageSize: pageSize
+        )
+
+        context.saveGState()
+        context.setStrokeColor(CGColor(gray: 0, alpha: 1))
+        context.setLineWidth(0.5)
+        context.setLineDash(phase: 0, lengths: [])
+
+        for center in centers {
+            let rect = CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+            context.strokeEllipse(in: rect)
+        }
+
         context.restoreGState()
     }
 }
