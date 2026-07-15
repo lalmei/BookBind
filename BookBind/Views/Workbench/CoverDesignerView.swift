@@ -154,6 +154,7 @@ struct CoverDesignerView: View {
             handleImageImport(result)
         }
         .focusable()
+        .modifier(CoverFocusRingDisabled())
         .onDeleteCommand {
             deleteSelected()
         }
@@ -207,6 +208,7 @@ struct CoverDesignerView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .focusable()
+        .modifier(CoverFocusRingDisabled())
     }
 
     private var magnificationGesture: some Gesture {
@@ -525,12 +527,20 @@ struct CoverDesignerView: View {
             el.xMM = clampWrapX(resized.centerX)
             el.yMM = clampWrapY(resized.centerY)
             el.panel = geometry.panel(containingWrapX: el.xMM)
-            el.widthMM = max(CoverEditorMath.minimumElementSizeMM, resized.width)
-            el.heightMM = max(CoverEditorMath.minimumElementSizeMM, resized.height)
             if el.kind == .text {
                 let original = max(CoverEditorMath.minimumElementSizeMM, start.height)
                 let ratio = max(0.2, resized.height / original)
                 el.fontSizeMM = max(1, resizeStartFontSize * ratio)
+                let measured = CoverEditorMath.measuredTextSizeMM(
+                    text: el.text.isEmpty ? " " : el.text,
+                    fontSizeMM: el.fontSizeMM,
+                    fontStyle: el.fontStyle
+                )
+                el.widthMM = measured.width
+                el.heightMM = measured.height
+            } else {
+                el.widthMM = max(CoverEditorMath.minimumElementSizeMM, resized.width)
+                el.heightMM = max(CoverEditorMath.minimumElementSizeMM, resized.height)
             }
         }
     }
@@ -1571,6 +1581,16 @@ struct CoverDesignerView: View {
     }
 }
 
+private struct CoverFocusRingDisabled: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.focusEffectDisabled()
+        } else {
+            content
+        }
+    }
+}
+
 private struct CoverSelectionChrome: View {
     let width: CGFloat
     let height: CGFloat
@@ -1581,7 +1601,7 @@ private struct CoverSelectionChrome: View {
     var onDelete: () -> Void
 
     private let handleSize: CGFloat = 9
-    private let rotateReach: CGFloat = 26
+    private let rotateReach: CGFloat = 28
 
     var body: some View {
         ZStack {
@@ -1589,23 +1609,42 @@ private struct CoverSelectionChrome: View {
                 .strokeBorder(Color.accentColor, lineWidth: 1.5)
                 .allowsHitTesting(false)
 
-            // Rotation stem
-            Path { path in
-                path.move(to: CGPoint(x: width * 0.5, y: 0))
-                path.addLine(to: CGPoint(x: width * 0.5, y: -rotateReach))
+            ForEach(CoverResizeHandle.allCases) { handle in
+                handleView(handle)
+                    .position(position(for: handle))
             }
-            .stroke(Color.accentColor, lineWidth: 1.25)
-            .allowsHitTesting(false)
+        }
+        .frame(width: width, height: height)
+        .coordinateSpace(name: "selectionChrome")
+        .overlay(alignment: .top) {
+            rotateControl
+                .offset(y: -(rotateReach + handleSize * 0.35))
+        }
+        .overlay(alignment: .topTrailing) {
+            Button(action: onDelete) {
+                Image(systemName: "xmark.circle.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, Color.red.opacity(0.92))
+                    .font(.system(size: 14))
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .offset(x: 10, y: -10)
+            .help("Delete selected element")
+        }
+        .compositingGroup()
+        .modifier(CoverFocusRingDisabled())
+    }
 
-            // Rotation handle (above top-center of bounding box)
+    private var rotateControl: some View {
+        VStack(spacing: 0) {
             Image(systemName: "arrow.clockwise")
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(Color.accentColor)
                 .padding(5)
                 .background(Circle().fill(Color(nsColor: .textBackgroundColor)))
                 .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 1.25))
-                .contentShape(Circle().inset(by: -8))
-                .position(x: width * 0.5, y: -rotateReach)
+                .contentShape(Circle().inset(by: -10))
                 .gesture(
                     DragGesture(minimumDistance: 0, coordinateSpace: .named("selectionChrome"))
                         .onChanged { value in
@@ -1616,32 +1655,11 @@ private struct CoverSelectionChrome: View {
                         }
                 )
                 .help("Drag to rotate")
-                .zIndex(2)
 
-            ForEach(CoverResizeHandle.allCases) { handle in
-                handleView(handle)
-                    .position(position(for: handle))
-                    .zIndex(1)
-            }
-
-            Button(action: onDelete) {
-                Image(systemName: "xmark.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color.red.opacity(0.92))
-                    .font(.system(size: 15))
-            }
-            .buttonStyle(.plain)
-            .position(x: width + 4, y: -4)
-            .help("Delete selected element")
-            .zIndex(2)
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 1.25, height: rotateReach - 4)
         }
-        .frame(width: width, height: height)
-        .coordinateSpace(name: "selectionChrome")
-        // Extra layout room for rotate/delete without shifting the box center.
-        .frame(
-            width: width + rotateReach * 2,
-            height: height + rotateReach * 2
-        )
         .allowsHitTesting(true)
     }
 
