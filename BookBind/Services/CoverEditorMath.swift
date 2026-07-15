@@ -62,18 +62,15 @@ enum CoverEditorMath {
             width = max(minimumElementSizeMM, element.widthMM)
             height = max(minimumElementSizeMM, element.heightMM)
         case .text:
-            if element.widthMM > 0, element.heightMM > 0 {
-                width = max(minimumElementSizeMM, element.widthMM)
-                height = max(minimumElementSizeMM, element.heightMM)
-            } else {
-                let measured = measuredTextSizeMM(
-                    text: element.text,
-                    fontSizeMM: element.fontSizeMM,
-                    fontStyle: element.fontStyle
-                )
-                width = measured.width
-                height = measured.height
-            }
+            // Always size the box to glyph metrics so chrome matches rendered text
+            // (ignore stale width/height from older placements).
+            let measured = measuredTextSizeMM(
+                text: element.text.isEmpty ? " " : element.text,
+                fontSizeMM: element.fontSizeMM,
+                fontStyle: element.fontStyle
+            )
+            width = measured.width
+            height = measured.height
         }
         return CoverElementBounds(
             centerX: element.wrapCenterX(geometry: geometry),
