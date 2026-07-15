@@ -49,6 +49,7 @@ struct AppShellView: View {
         .preferredColorScheme(.dark)
         .tint(ArtisanTheme.primary)
         .onPreferenceChange(SidebarWidthKey.self) { sidebarWidth = $0 }
+        .background(WindowTitleHider())
         .sheet(isPresented: $store.showNewMasterwork) {
             NewMasterworkSheet { title, author, height, width, architecture in
                 store.createMasterwork(
@@ -428,6 +429,23 @@ private struct SidebarWidthKey: PreferenceKey {
     static var defaultValue: CGFloat = 240
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// Hides the redundant window title in the unified toolbar (brand lives in the sidebar).
+private struct WindowTitleHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            view.window?.titleVisibility = .hidden
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.titleVisibility = .hidden
+        }
     }
 }
 
