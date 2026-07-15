@@ -110,9 +110,14 @@ struct ImpositionWorkbenchView: View {
                         showPDFImporter = true
                     } label: {
                         Image(systemName: "plus")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
                     .help("Add PDFs")
+                    .accessibilityLabel("Add PDFs")
                 }
 
                 if !workspace.bookBlockItems.isEmpty {
@@ -125,9 +130,14 @@ struct ImpositionWorkbenchView: View {
                             Button("Back Cover Slot") { workspace.addCoverSlot(.backCover) }
                         } label: {
                             Image(systemName: "plus")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                                .frame(width: 22, height: 22)
+                                .contentShape(Rectangle())
                         }
                         .menuStyle(.borderlessButton)
                         .help("Insert pages into the assembled book block")
+                        .accessibilityLabel("Insert into book block")
                     }
                 }
 
@@ -320,34 +330,47 @@ struct ImpositionWorkbenchView: View {
             if workspace.sources.isEmpty {
                 emptySources
             } else {
-                List {
-                    ForEach(workspace.sources) { source in
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "doc.richtext")
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(source.name)
-                                    .lineLimit(2)
-                                Text("\(source.pageCount) pages")
-                                    .font(.caption)
+                VStack(alignment: .leading, spacing: 8) {
+                    List {
+                        ForEach(workspace.sources) { source in
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "doc.richtext")
                                     .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(source.name)
+                                        .lineLimit(2)
+                                    Text("\(source.pageCount) pages")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Button {
+                                    workspace.removeSource(source)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .buttonStyle(.borderless)
                             }
-                            Spacer(minLength: 0)
-                            Button {
-                                workspace.removeSource(source)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .buttonStyle(.borderless)
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
+                        .onMove(perform: workspace.moveSource)
                     }
-                    .onMove(perform: workspace.moveSource)
+                    .listStyle(.plain)
+                    .frame(minHeight: min(CGFloat(workspace.sources.count) * 52, 220))
+                    .scrollContentBackground(.hidden)
+
+                    Button {
+                        showPDFImporter = true
+                    } label: {
+                        Label("Add PDF…", systemImage: "plus")
+                            .font(.caption.weight(.medium))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .help("Add PDFs")
                 }
-                .listStyle(.plain)
-                .frame(minHeight: min(CGFloat(workspace.sources.count) * 52, 220))
-                .scrollContentBackground(.hidden)
             }
         }
     }
@@ -546,14 +569,16 @@ struct ImpositionWorkbenchView: View {
                                         .fill(Color(nsColor: .separatorColor).opacity(0.35))
                                 )
                         }
-
-                        Spacer(minLength: 0)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
+                Spacer(minLength: 0)
+
                 trailing()
+                    .fixedSize()
+                    .layoutPriority(1)
             }
             .padding(.horizontal, 4)
             .padding(.vertical, 6)
