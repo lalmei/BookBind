@@ -232,8 +232,17 @@ enum CoverBlueprintService {
             svg += panelSVG(x: x, w: w, h: geo.boardH, fill: fill, label: label, spine: panel == .spine)
         }
 
-        for element in project.orderedCoverElementsForRendering() where finishVisible(element.layer, in: project) {
-            svg += elementSVG(element, geometry: geo)
+        for finish in CoverElementLayer.allCases {
+            let elements = project.orderedCoverElementsForRendering()
+                .filter { finishVisible($0.layer, in: project) && $0.layer == finish }
+            guard !elements.isEmpty else { continue }
+            svg += """
+                <g id="finish-\(finish.rawValue)" data-finish="\(escape(finish.title))">
+            """
+            for element in elements {
+                svg += elementSVG(element, geometry: geo)
+            }
+            svg += "</g>\n"
         }
 
         svg += """
@@ -287,20 +296,89 @@ enum CoverBlueprintService {
             drawImageElement(element, at: CGPoint(x: x, y: y), scale: scale, context: ctx)
         case .text:
             drawTextElement(element, at: CGPoint(x: x, y: y), scale: scale)
+        case .shape:
+            drawShapeElement(element, at: CGPoint(x: x, y: y), scale: scale, context: ctx)
         }
     }
 
-    private static func drawTextElement(_ element: CoverDesignElement, at point: CGPoint, scale: Double) {
-        let color: NSColor
-        switch element.layer {
+    private static func finishColor(_ layer: CoverElementLayer) -> NSColor {
+        switch layer {
         case .foil:
-            color = NSColor(red: 0.451, green: 0.361, blue: 0.0, alpha: 1)
+            return NSColor(red: 0.451, green: 0.361, blue: 0.0, alpha: 1)
         case .deboss:
-            color = NSColor(red: 0.125, green: 0.129, blue: 0.110, alpha: 0.55)
+            return NSColor(red: 0.125, green: 0.129, blue: 0.110, alpha: 0.55)
         case .ink:
-            color = NSColor(red: 0.067, green: 0.110, blue: 0.173, alpha: 1)
+            return NSColor(red: 0.067, green: 0.110, blue: 0.173, alpha: 1)
+        }
+    }
+
+    private static func drawShapeElement(
+        _ element: CoverDesignElement,
+        at point: CGPoint,
+        scale: Double,
+        context: CGContext
+    ) {
+        let w = max(1, element.widthMM) * scale
+        let h = max(1, element.heightMM) * scale
+        let strokeW = max(0.2, element.strokeWidthMM) * scale
+        let color = finishColor(element.layer)
+        let dash = element.strokeStyle
+            .dashPatternMM(strokeWidthMM: element.strokeWidthMM)
+            .map { CGFloat($0 * scale) }
+
+        context.saveGState()
+        context.translateBy(x: point.x, y: point.y)
+        if element.rotationDegrees != 0 {
+            context.rotate(by: CGFloat(element.rotationDegrees) * .pi / 180)
         }
 
+        context.setStrokeColor(color.cgColor)
+        context.setLineWidth(strokeW)
+        context.setLineDash(phase: 0, lengths: dash)
+        context.setLineCap(element.strokeStyle.usesRoundCap ? .round : .butt)
+
+        // Stroke sits inside the element bounds, matching the canvas.
+        let rect = CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
+            .insetBy(dx: strokeW / 2, dy: strokeW / 2)
+        let innerInset = strokeW * 2.5
+
+        switch element.shapeType {
+        case .rectangle:
+            if element.isFilled {
+                context.setFillColor(color.withAlphaComponent(color.alphaComponent * 0.9).cgColor)
+                context.fill(rect)
+            }
+            context.stroke(rect, width: strokeW)
+            if element.strokeStyle.isDoubleStroke {
+                context.setLineDash(phase: 0, lengths: [])
+                context.stroke(rect.insetBy(dx: innerInset, dy: innerInset), width: strokeW)
+            }
+        case .ellipse:
+            if element.isFilled {
+                context.setFillColor(color.withAlphaComponent(color.alphaComponent * 0.9).cgColor)
+                context.fillEllipse(in: rect)
+            }
+            context.strokeEllipse(in: rect)
+            if element.strokeStyle.isDoubleStroke {
+                context.setLineDash(phase: 0, lengths: [])
+                context.strokeEllipse(in: rect.insetBy(dx: innerInset, dy: innerInset))
+            }
+        case .line:
+            context.move(to: CGPoint(x: rect.minX, y: 0))
+            context.addLine(to: CGPoint(x: rect.maxX, y: 0))
+            context.strokePath()
+            if element.strokeStyle.isDoubleStroke {
+                context.setLineDash(phase: 0, lengths: [])
+                context.move(to: CGPoint(x: rect.minX, y: innerInset))
+                context.addLine(to: CGPoint(x: rect.maxX, y: innerInset))
+                context.strokePath()
+            }
+        }
+        context.restoreGState()
+    }
+
+    private static func drawTextElement(_ element: CoverDesignElement, at point: CGPoint, scale: Double) {
+        let color = finishColor(element.layer)
         let fontSize = max(4, CGFloat(element.fontSizeMM * scale))
         let attributes: [NSAttributedString.Key: Any] = [
             .font: CoverEditorMath.nsFont(for: element.fontStyle, sizePoints: fontSize),
@@ -395,13 +473,10 @@ enum CoverBlueprintService {
             return """
                 <image href="\(href)" x="\(fmt(ox - w / 2))" y="\(fmt(oy - h / 2))" width="\(fmt(w))" height="\(fmt(h))" opacity="\(opacity)" \(transform) preserveAspectRatio="xMidYMid meet"/>
             """
+        case .shape:
+            return shapeSVG(element, centerX: ox, centerY: oy, opacity: opacity, transform: transform)
         case .text:
-            let fill: String
-            switch element.layer {
-            case .foil: fill = "#735c00"
-            case .deboss: fill = "#20211c"
-            case .ink: fill = "#111c2c"
-            }
+            let fill = finishHex(element.layer)
             let size = element.fontSizeMM
             let family = element.fontStyle == .body ? "system-ui, sans-serif" : "Georgia, 'Times New Roman', serif"
             let weight = element.fontStyle == .display ? "600" : "400"
@@ -409,6 +484,61 @@ enum CoverBlueprintService {
                 <text x="\(fmt(ox))" y="\(fmt(oy))" text-anchor="middle" dominant-baseline="middle" font-family="\(family)" font-size="\(fmt(size))" font-weight="\(weight)" fill="\(fill)" opacity="\(opacity)" \(transform)>\(escape(element.text))</text>
             """
         }
+    }
+
+    private static func finishHex(_ layer: CoverElementLayer) -> String {
+        switch layer {
+        case .foil: return "#735c00"
+        case .deboss: return "#20211c"
+        case .ink: return "#111c2c"
+        }
+    }
+
+    private static func shapeSVG(
+        _ element: CoverDesignElement,
+        centerX ox: Double,
+        centerY oy: Double,
+        opacity: String,
+        transform: String
+    ) -> String {
+        let color = finishHex(element.layer)
+        let strokeW = max(0.2, element.strokeWidthMM)
+        // Inset so the stroke stays inside the element bounds, matching the canvas.
+        let w = max(1, element.widthMM) - strokeW
+        let h = max(1, element.heightMM) - strokeW
+        let fill = (element.isFilled && element.shapeType != .line) ? color : "none"
+        let dashValues = element.strokeStyle.dashPatternMM(strokeWidthMM: element.strokeWidthMM)
+        var strokeAttrs = "stroke=\"\(color)\" stroke-width=\"\(fmt(strokeW))\""
+        if !dashValues.isEmpty {
+            strokeAttrs += " stroke-dasharray=\"\(dashValues.map(fmt).joined(separator: " "))\""
+        }
+        if element.strokeStyle.usesRoundCap {
+            strokeAttrs += " stroke-linecap=\"round\""
+        }
+        let plainStroke = "stroke=\"\(color)\" stroke-width=\"\(fmt(strokeW))\""
+        let inner = element.strokeWidthMM * 2.5
+
+        var body = ""
+        switch element.shapeType {
+        case .rectangle:
+            body += "<rect x=\"\(fmt(ox - w / 2))\" y=\"\(fmt(oy - h / 2))\" width=\"\(fmt(w))\" height=\"\(fmt(h))\" fill=\"\(fill)\" \(strokeAttrs)/>"
+            if element.strokeStyle.isDoubleStroke {
+                body += "<rect x=\"\(fmt(ox - w / 2 + inner))\" y=\"\(fmt(oy - h / 2 + inner))\" width=\"\(fmt(max(0.5, w - inner * 2)))\" height=\"\(fmt(max(0.5, h - inner * 2)))\" fill=\"none\" \(plainStroke)/>"
+            }
+        case .ellipse:
+            body += "<ellipse cx=\"\(fmt(ox))\" cy=\"\(fmt(oy))\" rx=\"\(fmt(w / 2))\" ry=\"\(fmt(h / 2))\" fill=\"\(fill)\" \(strokeAttrs)/>"
+            if element.strokeStyle.isDoubleStroke {
+                body += "<ellipse cx=\"\(fmt(ox))\" cy=\"\(fmt(oy))\" rx=\"\(fmt(max(0.5, w / 2 - inner)))\" ry=\"\(fmt(max(0.5, h / 2 - inner)))\" fill=\"none\" \(plainStroke)/>"
+            }
+        case .line:
+            body += "<line x1=\"\(fmt(ox - w / 2))\" y1=\"\(fmt(oy))\" x2=\"\(fmt(ox + w / 2))\" y2=\"\(fmt(oy))\" \(strokeAttrs)/>"
+            if element.strokeStyle.isDoubleStroke {
+                body += "<line x1=\"\(fmt(ox - w / 2))\" y1=\"\(fmt(oy + inner))\" x2=\"\(fmt(ox + w / 2))\" y2=\"\(fmt(oy + inner))\" \(plainStroke)/>"
+            }
+        }
+        return """
+            <g opacity="\(opacity)" \(transform)>\(body)</g>
+        """
     }
 
     private static func finishVisible(_ layer: CoverElementLayer, in project: BinderyProject) -> Bool {

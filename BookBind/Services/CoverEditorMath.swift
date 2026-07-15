@@ -58,7 +58,7 @@ enum CoverEditorMath {
         let width: Double
         let height: Double
         switch element.kind {
-        case .image:
+        case .image, .shape:
             width = max(minimumElementSizeMM, element.widthMM)
             height = max(minimumElementSizeMM, element.heightMM)
         case .text:
@@ -199,7 +199,53 @@ enum CoverEditorMath {
         return min(8, max(0.25, current * multiplier))
     }
 
-    static func coverSizeWithFloor(current: Double, proposed: Double, floor: Double) -> Double {
-        max(max(40, floor), proposed.isFinite ? proposed : current)
+    /// Physical sanity floor for board edits. The imposition-derived bound is
+    /// soft: values below it are allowed but flagged via `measurementWarnings`.
+    static let hardMinimumBoardSizeMM = 40.0
+    /// Smallest usable spine midsection when overriding manually.
+    static let hardMinimumSpineWidthMM = 4.0
+
+    static func boardSize(current: Double, proposed: Double) -> Double {
+        guard proposed.isFinite else { return current }
+        return max(hardMinimumBoardSizeMM, proposed)
+    }
+
+    /// Normalize a manual spine width entry; zero/invalid clears the override.
+    static func spineWidthOverride(proposed: Double) -> Double? {
+        guard proposed.isFinite, proposed > 0 else { return nil }
+        return max(hardMinimumSpineWidthMM, proposed)
+    }
+
+    /// Subtle notes for the Measurements panel when a region is set below its
+    /// recommended bound (imposition trim for boards, book block for the spine).
+    static func measurementWarnings(
+        boardWidthMM: Double,
+        boardHeightMM: Double,
+        minimumBoardWidthMM: Double,
+        minimumBoardHeightMM: Double,
+        spineWidthMM: Double,
+        requiredSpineWidthMM: Double
+    ) -> [String] {
+        let tolerance = 0.05
+        var warnings: [String] = []
+        if boardWidthMM + tolerance < minimumBoardWidthMM {
+            warnings.append(String(
+                format: "Cover width %.1f mm is below the %.1f mm imposition trim — pages will overhang.",
+                boardWidthMM, minimumBoardWidthMM
+            ))
+        }
+        if boardHeightMM + tolerance < minimumBoardHeightMM {
+            warnings.append(String(
+                format: "Cover height %.1f mm is below the %.1f mm imposition trim — pages will overhang.",
+                boardHeightMM, minimumBoardHeightMM
+            ))
+        }
+        if spineWidthMM + tolerance < requiredSpineWidthMM {
+            warnings.append(String(
+                format: "Spine %.1f mm is narrower than the %.1f mm the book block needs.",
+                spineWidthMM, requiredSpineWidthMM
+            ))
+        }
+        return warnings
     }
 }

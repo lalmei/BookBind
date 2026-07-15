@@ -33,7 +33,7 @@ final class CoverDesignTests: XCTestCase {
         project.seedCoverElementsIfNeeded(spineWidthMM: 28.5)
         XCTAssertFalse(project.coverElements.isEmpty)
         XCTAssertFalse(project.coverDesignLayers.isEmpty)
-        XCTAssertEqual(project.coverDesignLayers.count, 3)
+        XCTAssertEqual(project.coverDesignLayers.count, 1)
         XCTAssertTrue(project.showFoilLayer)
         XCTAssertEqual(project.folioStampText, "LEGACY STAMP")
         XCTAssertTrue(project.coverElements.contains { $0.panel == .front && $0.text == "LEGACY STAMP" })
@@ -111,7 +111,7 @@ final class CoverDesignTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let restored = try decoder.decode(BinderyProject.self, from: data)
 
-        XCTAssertEqual(restored.coverDesignLayers.count, 4)
+        XCTAssertEqual(restored.coverDesignLayers.count, 2)
         XCTAssertTrue(restored.coverElements.contains { $0.kind == .image && $0.imageName == "motif.png" })
         XCTAssertEqual(restored.activeCoverLayerID, layerID)
     }
@@ -119,7 +119,8 @@ final class CoverDesignTests: XCTestCase {
     func testLayerRenameMoveAndElementOrder() throws {
         var project = BinderyProject(title: "Dune")
         project.ensureCoverDesignLayers()
-        let artwork = try XCTUnwrap(project.coverDesignLayers.first { $0.name == "Artwork" })
+        let base = try XCTUnwrap(project.coverDesignLayers.first)
+        project.addCoverDesignLayer(named: "Typography")
         let typography = try XCTUnwrap(project.coverDesignLayers.first { $0.name == "Typography" })
 
         let first = CoverDesignElement(
@@ -128,7 +129,7 @@ final class CoverDesignTests: XCTestCase {
             text: "First",
             xMM: 10,
             yMM: 10,
-            designLayerID: artwork.id
+            designLayerID: base.id
         )
         let second = CoverDesignElement(
             kind: .text,
@@ -136,17 +137,17 @@ final class CoverDesignTests: XCTestCase {
             text: "Second",
             xMM: 12,
             yMM: 12,
-            designLayerID: artwork.id
+            designLayerID: base.id
         )
         project.coverElements = [first, second]
 
-        project.renameCoverDesignLayer(artwork.id, to: "Background Art")
-        XCTAssertTrue(project.coverDesignLayers.contains { $0.id == artwork.id && $0.name == "Background Art" })
+        project.renameCoverDesignLayer(base.id, to: "Background Art")
+        XCTAssertTrue(project.coverDesignLayers.contains { $0.id == base.id && $0.name == "Background Art" })
 
         project.moveCoverElement(second.id, toLayer: typography.id)
         XCTAssertEqual(project.coverElements.first { $0.id == second.id }?.designLayerID, typography.id)
 
-        project.moveCoverElement(second.id, toLayer: artwork.id)
+        project.moveCoverElement(second.id, toLayer: base.id)
         project.moveCoverElementWithinLayer(first.id, direction: 1)
         let ordered = project.orderedCoverElementsForRendering()
         XCTAssertLessThan(
@@ -202,9 +203,71 @@ final class CoverDesignTests: XCTestCase {
         XCTAssertEqual(locked.width / locked.height, 2, accuracy: 0.01)
     }
 
-    func testCoverSizeFloorAllowsOversizeAndRejectsShrink() {
-        XCTAssertEqual(CoverEditorMath.coverSizeWithFloor(current: 210, proposed: 260, floor: 210), 260)
-        XCTAssertEqual(CoverEditorMath.coverSizeWithFloor(current: 260, proposed: 190, floor: 210), 210)
+    func testBoardSizeAllowsShrinkBelowImpositionButKeepsHardMinimum() {
+        XCTAssertEqual(CoverEditorMath.boardSize(current: 210, proposed: 260), 260)
+        // Below the imposition bound is allowed — warnings handle it, not clamps.
+        XCTAssertEqual(CoverEditorMath.boardSize(current: 260, proposed: 190), 190)
+        XCTAssertEqual(CoverEditorMath.boardSize(current: 210, proposed: 10), CoverEditorMath.hardMinimumBoardSizeMM)
+        XCTAssertEqual(CoverEditorMath.boardSize(current: 210, proposed: .nan), 210)
+    }
+
+    func testSpineWidthOverrideNormalization() {
+        XCTAssertEqual(CoverEditorMath.spineWidthOverride(proposed: 24.5), 24.5)
+        XCTAssertEqual(CoverEditorMath.spineWidthOverride(proposed: 1), CoverEditorMath.hardMinimumSpineWidthMM)
+        XCTAssertNil(CoverEditorMath.spineWidthOverride(proposed: 0))
+        XCTAssertNil(CoverEditorMath.spineWidthOverride(proposed: -3))
+    }
+
+    func testMeasurementWarningsFlagRegionsBelowTheirBounds() {
+        let none = CoverEditorMath.measurementWarnings(
+            boardWidthMM: 210,
+            boardHeightMM: 297,
+            minimumBoardWidthMM: 210,
+            minimumBoardHeightMM: 297,
+            spineWidthMM: 28.5,
+            requiredSpineWidthMM: 28.5
+        )
+        XCTAssertTrue(none.isEmpty)
+
+        let all = CoverEditorMath.measurementWarnings(
+            boardWidthMM: 190,
+            boardHeightMM: 280,
+            minimumBoardWidthMM: 210,
+            minimumBoardHeightMM: 297,
+            spineWidthMM: 20,
+            requiredSpineWidthMM: 28.5
+        )
+        XCTAssertEqual(all.count, 3)
+        XCTAssertTrue(all[0].contains("width"))
+        XCTAssertTrue(all[1].contains("height"))
+        XCTAssertTrue(all[2].contains("Spine"))
+    }
+
+    func testEffectiveSpineWidthUsesOverrideAndRoundTrips() throws {
+        var project = BinderyProject(title: "Dune", heightMM: 297, widthMM: 210)
+        project.textPaperGSM = 80
+        project.boardThicknessMM = 2
+        project.hingeGapMM = 8
+
+        let computed = project.effectiveSpineWidthMM(pageCount: 256)
+        XCTAssertEqual(
+            computed,
+            BindingMath.caseSpineWidthMM(pageCount: 256, gsm: 80, boardThicknessMM: 2, hingeGapMM: 8),
+            accuracy: 0.001
+        )
+
+        project.spineWidthOverrideMM = 18
+        XCTAssertEqual(project.effectiveSpineWidthMM(pageCount: 256), 18, accuracy: 0.001)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let restored = try decoder.decode(BinderyProject.self, from: encoder.encode(project))
+        XCTAssertEqual(restored.spineWidthOverrideMM, 18)
+
+        project.spineWidthOverrideMM = nil
+        XCTAssertEqual(project.effectiveSpineWidthMM(pageCount: 256), computed, accuracy: 0.001)
     }
 
     func testRotationGestureMathKeepsRelativeDelta() {
@@ -243,6 +306,84 @@ final class CoverDesignTests: XCTestCase {
 
         XCTAssertEqual(project.widthMM, 240, accuracy: 0.01)
         XCTAssertEqual(project.heightMM, 300, accuracy: 0.01)
+    }
+
+    func testShapeElementStrokeStylesRoundTrip() throws {
+        var project = BinderyProject(title: "Dune")
+        project.ensureCoverDesignLayers()
+        let layerID = try XCTUnwrap(project.coverDesignLayers.first?.id)
+        project.coverElements = [
+            CoverDesignElement(
+                kind: .shape,
+                panel: .front,
+                xMM: 120,
+                yMM: 80,
+                widthMM: 60,
+                heightMM: 40,
+                layer: .deboss,
+                designLayerID: layerID,
+                shapeType: .rectangle,
+                strokeWidthMM: 1.2,
+                strokeStyle: .ornament,
+                isFilled: true
+            )
+        ]
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let restored = try decoder.decode(BinderyProject.self, from: encoder.encode(project))
+        let shape = try XCTUnwrap(restored.coverElements.first)
+        XCTAssertEqual(shape.kind, .shape)
+        XCTAssertEqual(shape.layer, .deboss)
+        XCTAssertEqual(shape.strokeStyle, .ornament)
+        XCTAssertTrue(shape.isFilled)
+    }
+
+    func testChainStrokeDashPattern() {
+        let pattern = CoverStrokeStyle.chain.dashPatternMM(strokeWidthMM: 1)
+        XCTAssertEqual(pattern.count, 4)
+        XCTAssertTrue(CoverStrokeStyle.chain.usesRoundCap)
+        XCTAssertTrue(CoverStrokeStyle.ornament.drawsOrnamentMarks)
+    }
+
+    func testSVGExportGroupsElementsByFinishChannel() throws {
+        var project = BinderyProject(title: "Dune", author: "Frank Herbert", heightMM: 297, widthMM: 210)
+        project.showFoilLayer = true
+        project.showDebossLayer = true
+        project.seedCoverElementsIfNeeded(spineWidthMM: 28.5)
+        project.ensureCoverDesignLayers()
+        let layerID = try XCTUnwrap(project.coverDesignLayers.first?.id)
+        project.coverElements.append(
+            CoverDesignElement(
+                kind: .shape,
+                panel: .front,
+                xMM: 300,
+                yMM: 120,
+                widthMM: 50,
+                heightMM: 30,
+                layer: .deboss,
+                designLayerID: layerID,
+                shapeType: .rectangle,
+                strokeStyle: .chain
+            )
+        )
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cover-\(UUID().uuidString).svg")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try CoverBlueprintService.writeSVG(
+            for: project,
+            pageCount: 256,
+            spineWidthMM: 28.5,
+            to: url
+        )
+
+        let svg = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(svg.contains("id=\"finish-foil\""))
+        XCTAssertTrue(svg.contains("id=\"finish-deboss\""))
     }
 
     func testSVGExportContainsPanelsAndText() throws {

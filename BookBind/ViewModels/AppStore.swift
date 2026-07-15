@@ -243,11 +243,15 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func updateSelectedProject(_ mutate: (inout BinderyProject) -> Void) {
+    /// Mutates the selected project. Pass `save: false` for high-frequency live
+    /// updates (drag/resize/rotate ticks) and persist once when the gesture ends.
+    func updateSelectedProject(save: Bool = true, _ mutate: (inout BinderyProject) -> Void) {
         guard let index = selectedProjectIndex else { return }
         mutate(&projects[index])
         projects[index].updatedAt = Date()
-        save()
+        if save {
+            self.save()
+        }
     }
 
     func renameProject(_ id: UUID, title: String, author: String) {
