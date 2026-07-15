@@ -20,7 +20,7 @@ struct MaterialsLogView: View {
             Divider()
             addRow
         }
-        .background(ArtisanTheme.surface)
+        .background(ArtisanTheme.surfaceBright)
     }
 
     private var header: some View {

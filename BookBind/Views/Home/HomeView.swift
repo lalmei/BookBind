@@ -80,17 +80,17 @@ struct HomeView: View {
 
                     Text("New Masterwork")
                         .font(ArtisanTheme.buttonFont)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ArtisanTheme.surfaceBright)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(ArtisanTheme.primary, in: RoundedRectangle(cornerRadius: ArtisanTheme.controlRadius, style: .continuous))
+                        .background(ArtisanTheme.secondary, in: RoundedRectangle(cornerRadius: ArtisanTheme.controlRadius, style: .continuous))
                 }
                 .padding(20)
                 .frame(maxWidth: 480, alignment: .leading)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(ArtisanTheme.surfaceContainerLowest, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(ArtisanTheme.outlineVariant.opacity(0.2), lineWidth: 1)
+                        .stroke(ArtisanTheme.outlineVariant.opacity(0.55), lineWidth: 1)
                 }
             }
             .buttonStyle(.plain)
@@ -134,10 +134,10 @@ struct HomeView: View {
                         }
                     }
                 }
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(ArtisanTheme.surfaceContainerLowest, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(ArtisanTheme.outlineVariant.opacity(0.18), lineWidth: 1)
+                        .stroke(ArtisanTheme.outlineVariant.opacity(0.45), lineWidth: 1)
                 }
             }
         }
@@ -156,7 +156,7 @@ struct HomeView: View {
                         .frame(width: 34, height: 26)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isSelected ? Color.white : Color.clear)
+                                .fill(isSelected ? ArtisanTheme.surfaceContainerLowest : Color.clear)
                         )
                 }
                 .buttonStyle(.plain)
@@ -244,10 +244,10 @@ private struct ProjectCard: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(ArtisanTheme.surfaceContainerLowest, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(ArtisanTheme.outlineVariant.opacity(0.18), lineWidth: 1)
+                    .stroke(ArtisanTheme.outlineVariant.opacity(0.45), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)

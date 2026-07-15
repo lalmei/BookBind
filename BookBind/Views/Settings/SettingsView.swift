@@ -28,6 +28,7 @@ struct SettingsView: View {
             .padding(36)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(ArtisanTheme.surfaceBright)
     }
 }
 
@@ -84,6 +85,7 @@ struct SupportView: View {
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(ArtisanTheme.surfaceBright)
     }
 
     private func guideRow(_ title: String, _ body: String) -> some View {
