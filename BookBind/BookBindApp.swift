@@ -4,11 +4,20 @@ import SwiftUI
 struct BookBindApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppShellView()
         }
-        .defaultSize(width: 1100, height: 760)
+        .defaultSize(width: 1180, height: 780)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .newItem) {
+                Button("New Masterwork…") {
+                    NotificationCenter.default.post(name: .bookBindNewMasterwork, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
         }
     }
+}
+
+extension Notification.Name {
+    static let bookBindNewMasterwork = Notification.Name("bookBindNewMasterwork")
 }
