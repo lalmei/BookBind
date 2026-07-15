@@ -273,6 +273,22 @@ struct ImpositionWorkbenchView: View {
                     if workspace.job.bindingStyle.usesStitchHoleMarks {
                         Toggle("Stitch hole marks", isOn: $workspace.job.showStitchHoleMarks)
                             .help("Punch positions on the fold for saddle-stitch stapling")
+                        if workspace.job.showStitchHoleMarks {
+                            labeledControl("Stitch holes") {
+                                Picker("", selection: $workspace.job.stitchHoleCount) {
+                                    ForEach(StitchHoleCount.allCases) { count in
+                                        Text(count.label).tag(count)
+                                    }
+                                }
+                                .labelsHidden()
+                            }
+                            if let hint = stitchHoleCountHint {
+                                Text(hint)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
 
@@ -330,6 +346,43 @@ struct ImpositionWorkbenchView: View {
     private var sourcesBadge: String? {
         guard !workspace.sources.isEmpty else { return nil }
         return "\(workspace.sources.count)"
+    }
+
+    private var stitchHoleCountHint: String? {
+        guard workspace.job.bindingStyle.usesStitchHoleMarks else { return nil }
+        let sheetCount = workspace.plan?.sheetCount ?? 0
+        let pageHeight = workspace.job.resolvedTrimSize?.height
+            ?? workspace.sources.first?.pageSize.height
+            ?? 792
+        let resolved = ImpositionService.resolvedStitchHoleCount(
+            setting: workspace.job.stitchHoleCount,
+            sheetCount: sheetCount,
+            pageHeight: pageHeight
+        )
+        switch workspace.job.stitchHoleCount {
+        case .auto:
+            if sheetCount == 0 {
+                return "Auto uses 2 staples for up to 4 nested sheets, 3 for thicker booklets."
+            }
+            return String(
+                format: "Auto → %d hole%@ for %d nested sheet%@.",
+                resolved,
+                resolved == 1 ? "" : "s",
+                sheetCount,
+                sheetCount == 1 ? "" : "s"
+            )
+        case .one, .two, .three:
+            let requested = workspace.job.stitchHoleCount == .one ? 1
+                : workspace.job.stitchHoleCount == .two ? 2 : 3
+            if requested != resolved {
+                return String(
+                    format: "Trim height limits this to %d hole%@.",
+                    resolved,
+                    resolved == 1 ? "" : "s"
+                )
+            }
+            return nil
+        }
     }
 
     private var sourcesContent: some View {
