@@ -11,6 +11,7 @@ struct ProjectWorkbenchView: View {
     @State private var isEditingTitle = false
     @State private var titleDraft = ""
     @FocusState private var isTitleFieldFocused: Bool
+    @StateObject private var coverChrome = CoverEditorChrome()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,18 +44,31 @@ struct ProjectWorkbenchView: View {
         } message: {
             Text(toolPendingUnlock?.unlockPromptMessage ?? "")
         }
+        .onChange(of: project.id) { _ in
+            coverChrome.viewMode = .fit
+            coverChrome.zoomFactor = 1.0
+        }
     }
 
     /// Project identity in the content chrome; tool switcher lives in the window toolbar.
     private var workbenchHeader: some View {
-        HStack {
+        HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 projectTitleView
                 Text(project.displaySubtitle)
                     .font(.caption)
                     .foregroundStyle(headerSubtitleColor)
             }
+
             Spacer(minLength: 0)
+
+            if store.projectTool == .cover {
+                CoverWorkbenchHeaderControls(
+                    project: project,
+                    workspace: workspace,
+                    chrome: coverChrome
+                )
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -189,9 +203,59 @@ struct ProjectWorkbenchView: View {
                 projectTitle: project.title
             )
         case .cover:
-            CoverDesignerView(project: project)
+            CoverDesignerView(
+                project: project,
+                workspace: workspace,
+                chrome: coverChrome
+            )
         case .materials:
             MaterialsLogView(project: project)
         }
+    }
+}
+
+private struct CoverWorkbenchHeaderControls: View {
+    @EnvironmentObject private var store: AppStore
+    let project: BinderyProject
+    @ObservedObject var workspace: BindingWorkspace
+    @ObservedObject var chrome: CoverEditorChrome
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Picker("Scale", selection: $chrome.viewMode) {
+                ForEach(CoverEditorChrome.ViewMode.allCases) { mode in
+                    Text(mode.shortLabel).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 100)
+            .labelsHidden()
+
+            Button {
+                chrome.zoomFactor = 1.0
+            } label: {
+                Text(String(format: "%.0f%%", chrome.zoomFactor * 100))
+                    .font(ArtisanTheme.technicalCaption)
+                    .monospacedDigit()
+            }
+            .buttonStyle(.borderless)
+            .help("Reset pinch zoom")
+
+            Menu("Export") {
+                Button("SVG…") {
+                    CoverExportService.exportSVG(project: project, workspace: workspace, store: store)
+                }
+                Button("Blueprint PDF…") {
+                    CoverExportService.exportBlueprintPDF(project: project, workspace: workspace, store: store)
+                }
+            }
+            .menuStyle(.borderlessButton)
+
+            Button("Export PDF…") {
+                CoverExportService.exportBlueprintPDF(project: project, workspace: workspace, store: store)
+            }
+            .buttonStyle(.bordered)
+        }
+        .tint(Color(nsColor: .labelColor))
     }
 }
