@@ -663,10 +663,15 @@ struct CoverDesignerView: View {
 
     private func wrapCanvas(wrapW: CGFloat, wrapH: CGFloat, scale: Double) -> some View {
         ZStack(alignment: .topLeading) {
-            // Continuous material fill — one design surface for the full wrap.
+            // Shadow only on the artboard surface — not on placed images/text/shapes.
             Rectangle()
                 .fill(materialBaseFill)
                 .frame(width: wrapW, height: wrapH)
+                .overlay {
+                    Rectangle()
+                        .strokeBorder(Color.black.opacity(0.55), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
 
             if showJointGuides {
                 ForEach(geometry.layoutPanels) { panel in
@@ -709,11 +714,7 @@ struct CoverDesignerView: View {
             }
         }
         .frame(width: wrapW, height: wrapH)
-        .overlay {
-            Rectangle()
-                .strokeBorder(Color.black.opacity(0.55), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+        .clipped()
         .gesture(shapeDrawGesture(scale: scale))
     }
 
