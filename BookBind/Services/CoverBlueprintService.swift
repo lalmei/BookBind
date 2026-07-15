@@ -321,8 +321,9 @@ enum CoverBlueprintService {
     ) {
         let w = max(1, element.widthMM) * scale
         let h = max(1, element.heightMM) * scale
-        let strokeW = max(0.2, element.strokeWidthMM) * scale
-        let color = finishColor(element.layer)
+        let hasStroke = element.isStroked
+        let strokeW = hasStroke ? max(0.2, element.strokeWidthMM) * scale : 0
+        let color = element.stroke.solidColor?.nsColor ?? finishColor(element.layer)
         let fillNSColor = element.fill.solidColor?.nsColor ?? color
         let dash = element.strokeDashPatternMM().map { CGFloat($0 * scale) }
 
@@ -335,7 +336,7 @@ enum CoverBlueprintService {
         context.setStrokeColor(color.cgColor)
         context.setLineWidth(strokeW)
         context.setLineDash(phase: 0, lengths: dash)
-        context.setLineCap(element.strokeStyle.usesRoundCap ? .round : .butt)
+        context.setLineCap(element.strokeUsesRoundCap ? .round : .butt)
 
         // Stroke sits inside the element bounds, matching the canvas.
         let rect = CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
@@ -348,33 +349,99 @@ enum CoverBlueprintService {
                 context.setFillColor(fillNSColor.withAlphaComponent(fillNSColor.alphaComponent * 0.9).cgColor)
                 context.fill(rect)
             }
-            context.stroke(rect, width: strokeW)
-            if element.strokeStyle.isDoubleStroke {
-                context.setLineDash(phase: 0, lengths: [])
-                context.stroke(rect.insetBy(dx: innerInset, dy: innerInset), width: strokeW)
+            if hasStroke {
+                context.stroke(rect, width: strokeW)
+                if element.strokeStyle.isDoubleStroke {
+                    context.setLineDash(phase: 0, lengths: [])
+                    context.stroke(rect.insetBy(dx: innerInset, dy: innerInset), width: strokeW)
+                }
+                drawOrnamentStamps(element, in: rect, strokeW: strokeW, color: color, context: context)
             }
         case .ellipse:
             if element.isFilled {
                 context.setFillColor(fillNSColor.withAlphaComponent(fillNSColor.alphaComponent * 0.9).cgColor)
                 context.fillEllipse(in: rect)
             }
-            context.strokeEllipse(in: rect)
-            if element.strokeStyle.isDoubleStroke {
-                context.setLineDash(phase: 0, lengths: [])
-                context.strokeEllipse(in: rect.insetBy(dx: innerInset, dy: innerInset))
+            if hasStroke {
+                context.strokeEllipse(in: rect)
+                if element.strokeStyle.isDoubleStroke {
+                    context.setLineDash(phase: 0, lengths: [])
+                    context.strokeEllipse(in: rect.insetBy(dx: innerInset, dy: innerInset))
+                }
+                drawOrnamentStamps(element, in: rect, strokeW: strokeW, color: color, context: context)
             }
         case .line:
-            context.move(to: CGPoint(x: rect.minX, y: 0))
-            context.addLine(to: CGPoint(x: rect.maxX, y: 0))
-            context.strokePath()
-            if element.strokeStyle.isDoubleStroke {
-                context.setLineDash(phase: 0, lengths: [])
-                context.move(to: CGPoint(x: rect.minX, y: innerInset))
-                context.addLine(to: CGPoint(x: rect.maxX, y: innerInset))
+            if hasStroke {
+                context.move(to: CGPoint(x: rect.minX, y: 0))
+                context.addLine(to: CGPoint(x: rect.maxX, y: 0))
                 context.strokePath()
+                if element.strokeStyle.isDoubleStroke {
+                    context.setLineDash(phase: 0, lengths: [])
+                    context.move(to: CGPoint(x: rect.minX, y: innerInset))
+                    context.addLine(to: CGPoint(x: rect.maxX, y: innerInset))
+                    context.strokePath()
+                }
+                drawOrnamentStamps(element, in: rect, strokeW: strokeW, color: color, context: context)
             }
         }
         context.restoreGState()
+    }
+
+    private static func drawOrnamentStamps(
+        _ element: CoverDesignElement,
+        in rect: CGRect,
+        strokeW: CGFloat,
+        color: NSColor,
+        context: CGContext
+    ) {
+        guard element.strokeStyle.drawsOrnamentMarks,
+              element.ornamentPattern.drawsStamps else { return }
+        let spacing = max(8, strokeW * 7)
+        let size = strokeW * 1.6
+        let points = CoverShapeElementView.samplePoints(
+            along: element.shapeType,
+            in: rect,
+            spacing: spacing
+        )
+        context.setFillColor(color.cgColor)
+        context.setLineDash(phase: 0, lengths: [])
+        for point in points {
+            fillOrnamentStamp(
+                element.ornamentPattern,
+                at: point,
+                size: size,
+                context: context
+            )
+        }
+    }
+
+    private static func fillOrnamentStamp(
+        _ pattern: CoverOrnamentPattern,
+        at point: CGPoint,
+        size: CGFloat,
+        context: CGContext
+    ) {
+        let half = size / 2
+        switch pattern {
+        case .dots:
+            context.fillEllipse(in: CGRect(x: point.x - half, y: point.y - half, width: size, height: size))
+        case .diamonds:
+            context.beginPath()
+            context.move(to: CGPoint(x: point.x, y: point.y - half))
+            context.addLine(to: CGPoint(x: point.x + half, y: point.y))
+            context.addLine(to: CGPoint(x: point.x, y: point.y + half))
+            context.addLine(to: CGPoint(x: point.x - half, y: point.y))
+            context.closePath()
+            context.fillPath()
+        case .squares:
+            context.fill(CGRect(x: point.x - half * 0.9, y: point.y - half * 0.9, width: size * 0.9, height: size * 0.9))
+        case .crosses:
+            let arm = size * 0.28
+            context.fill(CGRect(x: point.x - half, y: point.y - arm / 2, width: size, height: arm))
+            context.fill(CGRect(x: point.x - arm / 2, y: point.y - half, width: arm, height: size))
+        case .dashes, .dashDots:
+            break
+        }
     }
 
     private static func drawTextElement(_ element: CoverDesignElement, at point: CGPoint, scale: Double) {
@@ -501,8 +568,11 @@ enum CoverBlueprintService {
         opacity: String,
         transform: String
     ) -> String {
-        let color = finishHex(element.layer)
-        let strokeW = max(0.2, element.strokeWidthMM)
+        let strokeHex: String = {
+            guard element.isStroked, let solid = element.stroke.solidColor else { return "none" }
+            return hexFromCodable(solid)
+        }()
+        let strokeW = element.isStroked ? max(0.2, element.strokeWidthMM) : 0
         // Inset so the stroke stays inside the element bounds, matching the canvas.
         let w = max(1, element.widthMM) - strokeW
         let h = max(1, element.heightMM) - strokeW
@@ -511,37 +581,83 @@ enum CoverBlueprintService {
             return hexFromCodable(solid)
         }()
         let dashValues = element.strokeDashPatternMM()
-        var strokeAttrs = "stroke=\"\(color)\" stroke-width=\"\(fmt(strokeW))\""
+        var strokeAttrs = "stroke=\"\(strokeHex)\" stroke-width=\"\(fmt(strokeW))\""
         if !dashValues.isEmpty {
             strokeAttrs += " stroke-dasharray=\"\(dashValues.map(fmt).joined(separator: " "))\""
         }
-        if element.strokeStyle.usesRoundCap {
+        if element.strokeUsesRoundCap {
             strokeAttrs += " stroke-linecap=\"round\""
         }
-        let plainStroke = "stroke=\"\(color)\" stroke-width=\"\(fmt(strokeW))\""
+        let plainStroke = "stroke=\"\(strokeHex)\" stroke-width=\"\(fmt(strokeW))\""
         let inner = element.strokeWidthMM * 2.5
 
         var body = ""
         switch element.shapeType {
         case .rectangle:
             body += "<rect x=\"\(fmt(ox - w / 2))\" y=\"\(fmt(oy - h / 2))\" width=\"\(fmt(w))\" height=\"\(fmt(h))\" fill=\"\(fill)\" \(strokeAttrs)/>"
-            if element.strokeStyle.isDoubleStroke {
+            if element.isStroked, element.strokeStyle.isDoubleStroke {
                 body += "<rect x=\"\(fmt(ox - w / 2 + inner))\" y=\"\(fmt(oy - h / 2 + inner))\" width=\"\(fmt(max(0.5, w - inner * 2)))\" height=\"\(fmt(max(0.5, h - inner * 2)))\" fill=\"none\" \(plainStroke)/>"
             }
         case .ellipse:
             body += "<ellipse cx=\"\(fmt(ox))\" cy=\"\(fmt(oy))\" rx=\"\(fmt(w / 2))\" ry=\"\(fmt(h / 2))\" fill=\"\(fill)\" \(strokeAttrs)/>"
-            if element.strokeStyle.isDoubleStroke {
+            if element.isStroked, element.strokeStyle.isDoubleStroke {
                 body += "<ellipse cx=\"\(fmt(ox))\" cy=\"\(fmt(oy))\" rx=\"\(fmt(max(0.5, w / 2 - inner)))\" ry=\"\(fmt(max(0.5, h / 2 - inner)))\" fill=\"none\" \(plainStroke)/>"
             }
         case .line:
             body += "<line x1=\"\(fmt(ox - w / 2))\" y1=\"\(fmt(oy))\" x2=\"\(fmt(ox + w / 2))\" y2=\"\(fmt(oy))\" \(strokeAttrs)/>"
-            if element.strokeStyle.isDoubleStroke {
+            if element.isStroked, element.strokeStyle.isDoubleStroke {
                 body += "<line x1=\"\(fmt(ox - w / 2))\" y1=\"\(fmt(oy + inner))\" x2=\"\(fmt(ox + w / 2))\" y2=\"\(fmt(oy + inner))\" \(plainStroke)/>"
             }
         }
+        body += ornamentStampsSVG(element, centerX: ox, centerY: oy, color: strokeHex)
         return """
             <g opacity="\(opacity)" \(transform)>\(body)</g>
         """
+    }
+
+    private static func ornamentStampsSVG(
+        _ element: CoverDesignElement,
+        centerX ox: Double,
+        centerY oy: Double,
+        color: String
+    ) -> String {
+        guard element.isStroked,
+              element.strokeStyle.drawsOrnamentMarks,
+              element.ornamentPattern.drawsStamps,
+              color != "none" else { return "" }
+
+        let strokeW = max(0.2, element.strokeWidthMM)
+        let w = max(1, element.widthMM) - strokeW
+        let h = max(1, element.heightMM) - strokeW
+        let rect = CGRect(x: ox - w / 2, y: oy - h / 2, width: w, height: h)
+        let spacing = max(2.0, strokeW * 7)
+        let size = strokeW * 1.6
+        let points = CoverShapeElementView.samplePoints(
+            along: element.shapeType,
+            in: rect,
+            spacing: CGFloat(spacing)
+        )
+
+        var svg = ""
+        for point in points {
+            switch element.ornamentPattern {
+            case .dots:
+                svg += "<circle cx=\"\(fmt(Double(point.x)))\" cy=\"\(fmt(Double(point.y)))\" r=\"\(fmt(size / 2))\" fill=\"\(color)\"/>"
+            case .diamonds:
+                let half = size / 2
+                svg += "<polygon points=\"\(fmt(Double(point.x))),\(fmt(Double(point.y) - half)) \(fmt(Double(point.x) + half)),\(fmt(Double(point.y))) \(fmt(Double(point.x))),\(fmt(Double(point.y) + half)) \(fmt(Double(point.x) - half)),\(fmt(Double(point.y)))\" fill=\"\(color)\"/>"
+            case .squares:
+                let side = size * 0.9
+                svg += "<rect x=\"\(fmt(Double(point.x) - side / 2))\" y=\"\(fmt(Double(point.y) - side / 2))\" width=\"\(fmt(side))\" height=\"\(fmt(side))\" fill=\"\(color)\"/>"
+            case .crosses:
+                let arm = size * 0.28
+                svg += "<rect x=\"\(fmt(Double(point.x) - size / 2))\" y=\"\(fmt(Double(point.y) - arm / 2))\" width=\"\(fmt(size))\" height=\"\(fmt(arm))\" fill=\"\(color)\"/>"
+                svg += "<rect x=\"\(fmt(Double(point.x) - arm / 2))\" y=\"\(fmt(Double(point.y) - size / 2))\" width=\"\(fmt(arm))\" height=\"\(fmt(size))\" fill=\"\(color)\"/>"
+            case .dashes, .dashDots:
+                break
+            }
+        }
+        return svg
     }
 
     private static func finishVisible(_ layer: CoverElementLayer, in project: BinderyProject) -> Bool {

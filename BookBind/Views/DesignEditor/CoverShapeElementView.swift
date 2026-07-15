@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Renders a shape element with fill + border brush (dash pattern / double rule).
+/// Renders a shape element with fill + border brush (dash pattern / double rule / ornate stamps).
 struct CoverShapeElementView: View {
     let shapeType: CoverShapeType
     let strokeStyle: CoverStrokeStyle
+    var ornamentPattern: CoverOrnamentPattern = .dots
     let strokeWidthPx: CGFloat
     let dashPx: [CGFloat]
     let isFilled: Bool
@@ -13,6 +14,7 @@ struct CoverShapeElementView: View {
     init(
         shapeType: CoverShapeType,
         strokeStyle: CoverStrokeStyle,
+        ornamentPattern: CoverOrnamentPattern = .dots,
         strokeWidthPx: CGFloat,
         dashPx: [CGFloat],
         isFilled: Bool,
@@ -21,6 +23,7 @@ struct CoverShapeElementView: View {
     ) {
         self.shapeType = shapeType
         self.strokeStyle = strokeStyle
+        self.ornamentPattern = ornamentPattern
         self.strokeWidthPx = strokeWidthPx
         self.dashPx = dashPx
         self.isFilled = isFilled
@@ -37,37 +40,42 @@ struct CoverShapeElementView: View {
                 if isFilled, shapeType != .line {
                     path.fill((fillColor ?? strokeColor).opacity(0.9))
                 }
-                path.stroke(
-                    strokeColor,
-                    style: StrokeStyle(
-                        lineWidth: strokeWidthPx,
-                        lineCap: strokeStyle.usesRoundCap ? .round : .butt,
-                        dash: dashPx
+                if strokeWidthPx > 0 {
+                    path.stroke(
+                        strokeColor,
+                        style: StrokeStyle(
+                            lineWidth: strokeWidthPx,
+                            lineCap: strokeUsesRoundCap ? .round : .butt,
+                            dash: dashPx
+                        )
                     )
-                )
-                if strokeStyle.isDoubleStroke {
-                    innerPath(in: rect)
-                        .stroke(strokeColor, style: StrokeStyle(lineWidth: strokeWidthPx))
-                }
-                if strokeStyle.drawsOrnamentMarks {
-                    ornamentMarks(in: rect)
+                    if strokeStyle.isDoubleStroke {
+                        innerPath(in: rect)
+                            .stroke(strokeColor, style: StrokeStyle(lineWidth: strokeWidthPx))
+                    }
+                    if strokeStyle.drawsOrnamentMarks, ornamentPattern.drawsStamps {
+                        ornamentMarks(in: rect)
+                    }
                 }
             }
         }
     }
 
+    private var strokeUsesRoundCap: Bool {
+        strokeStyle == .ornament && ornamentPattern.usesRoundCap
+    }
+
     @ViewBuilder
     private func ornamentMarks(in rect: CGRect) -> some View {
-        let spacing = max(6, strokeWidthPx * 8)
-        let count = max(2, Int(rect.width / spacing))
-        ForEach(0..<count, id: \.self) { index in
-            let t = CGFloat(index + 1) / CGFloat(count + 1)
-            let x = rect.minX + rect.width * t
-            let y = rect.midY
-            Circle()
-                .fill(strokeColor)
-                .frame(width: strokeWidthPx * 1.2, height: strokeWidthPx * 1.2)
-                .position(x: x, y: y)
+        let spacing = max(8, strokeWidthPx * 7)
+        let points = Self.samplePoints(along: shapeType, in: rect, spacing: spacing)
+        ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+            CoverOrnamentStampShape(
+                pattern: ornamentPattern,
+                color: strokeColor,
+                size: strokeWidthPx * 1.6
+            )
+            .position(point)
         }
     }
 
@@ -96,5 +104,57 @@ struct CoverShapeElementView: View {
             path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
             return path
         }
+    }
+
+    /// Evenly spaced points along the stroke path for ornament stamps.
+    static func samplePoints(
+        along type: CoverShapeType,
+        in rect: CGRect,
+        spacing: CGFloat
+    ) -> [CGPoint] {
+        switch type {
+        case .line:
+            let length = max(1, rect.width)
+            let count = max(2, Int(length / spacing))
+            return (1...count).map { index in
+                let t = CGFloat(index) / CGFloat(count + 1)
+                return CGPoint(x: rect.minX + rect.width * t, y: rect.midY)
+            }
+        case .rectangle:
+            let peri = max(1, 2 * (rect.width + rect.height))
+            let count = max(4, Int(peri / spacing))
+            return (0..<count).map { index in
+                pointOnRectPerimeter(rect, t: CGFloat(index) / CGFloat(count))
+            }
+        case .ellipse:
+            let peri = .pi * (3 * (rect.width + rect.height)
+                - sqrt((3 * rect.width + rect.height) * (rect.width + 3 * rect.height)))
+            let count = max(6, Int(max(1, peri) / spacing))
+            return (0..<count).map { index in
+                let angle = CGFloat(index) / CGFloat(count) * 2 * .pi
+                return CGPoint(
+                    x: rect.midX + cos(angle) * rect.width / 2,
+                    y: rect.midY + sin(angle) * rect.height / 2
+                )
+            }
+        }
+    }
+
+    private static func pointOnRectPerimeter(_ rect: CGRect, t: CGFloat) -> CGPoint {
+        let peri = max(0.001, 2 * (rect.width + rect.height))
+        var d = ((t.truncatingRemainder(dividingBy: 1) + 1).truncatingRemainder(dividingBy: 1)) * peri
+        if d <= rect.width {
+            return CGPoint(x: rect.minX + d, y: rect.minY)
+        }
+        d -= rect.width
+        if d <= rect.height {
+            return CGPoint(x: rect.maxX, y: rect.minY + d)
+        }
+        d -= rect.height
+        if d <= rect.width {
+            return CGPoint(x: rect.maxX - d, y: rect.maxY)
+        }
+        d -= rect.width
+        return CGPoint(x: rect.minX, y: rect.maxY - d)
     }
 }

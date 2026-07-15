@@ -202,13 +202,9 @@ enum CoverShapeType: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 }
 
-/// Border brush for shape outlines — illustration presets plus bindery ornaments.
+/// Border brush for shape outlines — solid rule, double fillet, or ornate tooling.
 enum CoverStrokeStyle: String, CaseIterable, Identifiable, Hashable {
     case solid
-    case dashed
-    case dotted
-    case dashDot
-    case dashDotDot
     case double
     case ornament
 
@@ -217,32 +213,79 @@ enum CoverStrokeStyle: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .solid: return "Solid"
-        case .dashed: return "Dashed"
-        case .dotted: return "Dotted"
-        case .dashDot: return "Dash-dot"
-        case .dashDotDot: return "Dash-dot-dot"
         case .double: return "Double"
-        case .ornament: return "Ornament"
+        case .ornament: return "Ornate"
         }
     }
 
     var help: String {
         switch self {
         case .solid: return "Continuous rule"
-        case .dashed: return "Even dashes"
-        case .dotted: return "Round dots"
-        case .dashDot: return "Dash–gap–dot rhythm"
-        case .dashDotDot: return "Dash–dot–dot rhythm"
         case .double: return "Parallel fillet lines"
-        case .ornament: return "Dash–dot gouge pattern with accent marks"
+        case .ornament: return "Tooled border with a chosen stamp pattern"
+        }
+    }
+
+    /// Adds a second, inset stroke (classic double fillet rule).
+    var isDoubleStroke: Bool { self == .double }
+
+    /// Renders accent stamps along the stroke.
+    var drawsOrnamentMarks: Bool { self == .ornament }
+}
+
+/// Stamp / rhythm used when `CoverStrokeStyle.ornament` is selected.
+enum CoverOrnamentPattern: String, CaseIterable, Identifiable, Hashable, Codable {
+    case dots
+    case diamonds
+    case squares
+    case crosses
+    case dashes
+    case dashDots
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dots: return "Dots"
+        case .diamonds: return "Diamonds"
+        case .squares: return "Squares"
+        case .crosses: return "Crosses"
+        case .dashes: return "Dashes"
+        case .dashDots: return "Dash-dot"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .dots: return "Round gouge accents"
+        case .diamonds: return "Lozenge stamps"
+        case .squares: return "Square stamps"
+        case .crosses: return "Cross / plus stamps"
+        case .dashes: return "Even dashed rule"
+        case .dashDots: return "Dash–dot rhythm"
         }
     }
 
     /// Whether Dash / Gap length controls apply.
     var allowsDashScaling: Bool {
         switch self {
-        case .solid, .double: return false
-        case .dashed, .dotted, .dashDot, .dashDotDot, .ornament: return true
+        case .dashes, .dashDots: return true
+        case .dots, .diamonds, .squares, .crosses: return false
+        }
+    }
+
+    /// Draw discrete stamps along the path (false when the pattern is stroke-dash only).
+    var drawsStamps: Bool {
+        switch self {
+        case .dots, .diamonds, .squares, .crosses: return true
+        case .dashes, .dashDots: return false
+        }
+    }
+
+    var usesRoundCap: Bool {
+        switch self {
+        case .dashes: return false
+        case .dots, .diamonds, .squares, .crosses, .dashDots: return true
         }
     }
 
@@ -256,41 +299,29 @@ enum CoverStrokeStyle: String, CaseIterable, Identifiable, Hashable {
         let length = max(0.15, lengthScale)
         let gap = max(0.15, gapScale)
         switch self {
-        case .solid, .double:
+        case .dots, .diamonds, .squares, .crosses:
             return []
-        case .dashed:
+        case .dashes:
             return [width * 4 * length, width * 2 * gap]
-        case .dotted:
-            return [0.01, width * 2.5 * gap]
-        case .dashDot:
+        case .dashDots:
             return [
                 width * 3 * length, width * 1.5 * gap,
                 0.01, width * 1.5 * gap
             ]
-        case .dashDotDot:
-            return [
-                width * 3.5 * length, width * 1.4 * gap,
-                0.01, width * 1.2 * gap,
-                0.01, width * 1.4 * gap
-            ]
-        case .ornament:
-            // Dash–dot tooling rhythm with optional accent marks drawn separately.
-            return [width * 5 * length, width * 2 * gap, 0.01, width * 2 * gap]
         }
     }
 
-    var usesRoundCap: Bool {
-        switch self {
-        case .dotted, .dashDot, .dashDotDot, .ornament: return true
-        case .solid, .dashed, .double: return false
+    /// Legacy stroke-style raw values → ornament pattern.
+    static func fromLegacyStrokeStyle(_ raw: String) -> CoverOrnamentPattern? {
+        switch raw {
+        case "dashed": return .dashes
+        case "dotted": return .dots
+        case "dashDot", "chain": return .dashDots
+        case "dashDotDot": return .dashDots
+        case "ornament": return .dots
+        default: return nil
         }
     }
-
-    /// Adds a second, inset stroke (classic double fillet rule).
-    var isDoubleStroke: Bool { self == .double }
-
-    /// Renders accent marks along the stroke (tooled borders).
-    var drawsOrnamentMarks: Bool { self == .ornament }
 }
 
 extension CoverStrokeStyle: Codable {
@@ -298,17 +329,16 @@ extension CoverStrokeStyle: Codable {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
         switch raw {
-        case "chain":
-            // Legacy interlocking dash rhythm → standard dash-dot.
-            self = .dashDot
+        case "solid", "double", "ornament":
+            self = CoverStrokeStyle(rawValue: raw)!
+        case "chain", "dashed", "dotted", "dashDot", "dashDotDot":
+            // Legacy illustration presets → ornate with a mapped pattern.
+            self = .ornament
         default:
-            guard let value = CoverStrokeStyle(rawValue: raw) else {
-                throw DecodingError.dataCorruptedError(
-                    in: container,
-                    debugDescription: "Unknown CoverStrokeStyle '\(raw)'"
-                )
-            }
-            self = value
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown CoverStrokeStyle '\(raw)'"
+            )
         }
     }
 
@@ -379,10 +409,14 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
     var shapeType: CoverShapeType
     var strokeWidthMM: Double
     var strokeStyle: CoverStrokeStyle
-    /// Scales dash/dot on-segments (1 = default). Ignored for solid/double.
+    /// Stamp / dash rhythm when `strokeStyle` is `.ornament`.
+    var ornamentPattern: CoverOrnamentPattern
+    /// Scales dash/dot on-segments (1 = default). Ignored unless ornament uses dashes.
     var dashLengthScale: Double
-    /// Scales dash/dot gaps (1 = default). Ignored for solid/double.
+    /// Scales dash/dot gaps (1 = default). Ignored unless ornament uses dashes.
     var dashGapScale: Double
+    /// Shape stroke paint — `.none` or `.solid` (defaults to finish color for legacy).
+    var stroke: CoverPaint
     /// Shape fill — `.none` or `.solid`; reserved for gradients / patterns later.
     var fill: CoverPaint
     var imageBookmarkData: Data?
@@ -392,13 +426,22 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
     /// Convenience for rendering / legacy call sites.
     var isFilled: Bool { fill.isFilled }
 
+    /// Whether the shape draws a stroke path.
+    var isStroked: Bool { stroke.isFilled }
+
     /// Resolved dash array for the current stroke width and Dash/Gap scales.
     func strokeDashPatternMM() -> [Double] {
-        strokeStyle.dashPatternMM(
+        guard strokeStyle == .ornament else { return [] }
+        return ornamentPattern.dashPatternMM(
             strokeWidthMM: strokeWidthMM,
             lengthScale: dashLengthScale,
             gapScale: dashGapScale
         )
+    }
+
+    /// Round line caps when the active stroke needs them.
+    var strokeUsesRoundCap: Bool {
+        strokeStyle == .ornament && ornamentPattern.usesRoundCap
     }
 
     init(
@@ -422,8 +465,10 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         shapeType: CoverShapeType = .rectangle,
         strokeWidthMM: Double = 0.8,
         strokeStyle: CoverStrokeStyle = .solid,
+        ornamentPattern: CoverOrnamentPattern = .dots,
         dashLengthScale: Double = 1,
         dashGapScale: Double = 1,
+        stroke: CoverPaint? = nil,
         fill: CoverPaint = .none,
         imageBookmarkData: Data? = nil,
         imagePathHint: String? = nil,
@@ -449,8 +494,10 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         self.shapeType = shapeType
         self.strokeWidthMM = strokeWidthMM
         self.strokeStyle = strokeStyle
+        self.ornamentPattern = ornamentPattern
         self.dashLengthScale = dashLengthScale
         self.dashGapScale = dashGapScale
+        self.stroke = stroke ?? .solid(.finishDefault(for: layer))
         self.fill = fill
         self.imageBookmarkData = imageBookmarkData
         self.imagePathHint = imagePathHint
@@ -461,7 +508,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         case id, kind, panel, text, xMM, yMM, widthMM, heightMM, fontSizeMM
         case rotationDegrees, layer, fontStyle, designLayerID, opacity, isVisible
         case usesWrapCoordinates, isPanelLocked, shapeType, strokeWidthMM, strokeStyle
-        case dashLengthScale, dashGapScale, fill, isFilled
+        case ornamentPattern, dashLengthScale, dashGapScale, stroke, fill, isFilled
         case imageBookmarkData, imagePathHint, imageName
     }
 
@@ -487,9 +534,25 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         isPanelLocked = try container.decodeIfPresent(Bool.self, forKey: .isPanelLocked) ?? true
         shapeType = try container.decodeIfPresent(CoverShapeType.self, forKey: .shapeType) ?? .rectangle
         strokeWidthMM = try container.decodeIfPresent(Double.self, forKey: .strokeWidthMM) ?? 0.8
-        strokeStyle = try container.decodeIfPresent(CoverStrokeStyle.self, forKey: .strokeStyle) ?? .solid
+        let strokeStyleRaw = try container.decodeIfPresent(String.self, forKey: .strokeStyle) ?? "solid"
+        if let style = CoverStrokeStyle(rawValue: strokeStyleRaw) {
+            strokeStyle = style
+        } else if CoverOrnamentPattern.fromLegacyStrokeStyle(strokeStyleRaw) != nil {
+            strokeStyle = .ornament
+        } else {
+            strokeStyle = .solid
+        }
+        if let decodedPattern = try container.decodeIfPresent(CoverOrnamentPattern.self, forKey: .ornamentPattern) {
+            ornamentPattern = decodedPattern
+        } else if let legacy = CoverOrnamentPattern.fromLegacyStrokeStyle(strokeStyleRaw) {
+            ornamentPattern = legacy
+        } else {
+            ornamentPattern = .dots
+        }
         dashLengthScale = try container.decodeIfPresent(Double.self, forKey: .dashLengthScale) ?? 1
         dashGapScale = try container.decodeIfPresent(Double.self, forKey: .dashGapScale) ?? 1
+        stroke = try container.decodeIfPresent(CoverPaint.self, forKey: .stroke)
+            ?? .solid(.finishDefault(for: layer))
         if let decodedFill = try container.decodeIfPresent(CoverPaint.self, forKey: .fill) {
             fill = decodedFill
         } else {
@@ -523,8 +586,10 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         try container.encode(shapeType, forKey: .shapeType)
         try container.encode(strokeWidthMM, forKey: .strokeWidthMM)
         try container.encode(strokeStyle, forKey: .strokeStyle)
+        try container.encode(ornamentPattern, forKey: .ornamentPattern)
         try container.encode(dashLengthScale, forKey: .dashLengthScale)
         try container.encode(dashGapScale, forKey: .dashGapScale)
+        try container.encode(stroke, forKey: .stroke)
         try container.encode(fill, forKey: .fill)
         try container.encodeIfPresent(imageBookmarkData, forKey: .imageBookmarkData)
         try container.encodeIfPresent(imagePathHint, forKey: .imagePathHint)
@@ -933,10 +998,27 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         normalizeCoverLayerZIndexes()
     }
 
-    mutating func moveCoverElement(_ elementID: UUID, toLayer layerID: UUID) {
+    mutating func moveCoverElement(
+        _ elementID: UUID,
+        toLayer layerID: UUID,
+        beforeElementID: UUID? = nil
+    ) {
         guard coverDesignLayers.contains(where: { $0.id == layerID }),
               let index = coverElements.firstIndex(where: { $0.id == elementID }) else { return }
-        coverElements[index].designLayerID = layerID
+
+        var moved = coverElements.remove(at: index)
+        moved.designLayerID = layerID
+
+        if let beforeElementID,
+           beforeElementID != elementID,
+           let targetIndex = coverElements.firstIndex(where: { $0.id == beforeElementID }),
+           coverElements[targetIndex].designLayerID == layerID {
+            // Visual list is topmost-first (reversed array). "Before" in the list means
+            // after the target in array order so the dragged item sits above it.
+            coverElements.insert(moved, at: targetIndex + 1)
+        } else {
+            coverElements.append(moved)
+        }
     }
 
     mutating func moveCoverElementWithinLayer(_ elementID: UUID, direction: Int) {

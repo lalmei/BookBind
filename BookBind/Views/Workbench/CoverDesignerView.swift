@@ -26,6 +26,8 @@ struct CoverDesignerView: View {
     @State private var showImageImporter = false
     @State private var showJointGuides = true
     @State private var collapsedLayerIDs: Set<UUID> = []
+    /// Highlight target while dragging elements between layers.
+    @State private var layerDropTargetID: UUID?
     /// Finish channel for newly placed elements (Illustrator-style active swatch).
     @State private var activeFinish: CoverElementLayer = .ink
     /// When set, only this finish channel is shown on the canvas.
@@ -699,12 +701,17 @@ struct CoverDesignerView: View {
         let w = max(4, abs(current.x - start.x))
         let h = max(4, abs(current.y - start.y))
         let stroke = defaultStrokeStyle(for: activeFinish)
+        let pattern: CoverOrnamentPattern = .dots
+        let dashPx: [CGFloat] = stroke == .ornament
+            ? pattern.dashPatternMM(strokeWidthMM: 0.8).map { CGFloat($0 * scale) }
+            : []
         let filled = shapeType != .line && activeFinish == .deboss
         return CoverShapeElementView(
             shapeType: shapeType,
             strokeStyle: stroke,
+            ornamentPattern: pattern,
             strokeWidthPx: max(0.5, 0.8 * scale),
-            dashPx: stroke.dashPatternMM(strokeWidthMM: 0.8).map { CGFloat($0 * scale) },
+            dashPx: dashPx,
             isFilled: filled,
             color: finishSwatchColor(activeFinish),
             fillColor: filled ? CodableColor.finishDefault(for: activeFinish).color : nil
@@ -857,15 +864,18 @@ struct CoverDesignerView: View {
         pixelHeight: CGFloat,
         scale: Double
     ) -> some View {
-        let strokePx = max(0.5, element.strokeWidthMM * scale)
+        let hasStroke = element.isStroked
+        let strokePx = hasStroke ? max(0.5, element.strokeWidthMM * scale) : 0
         let dashPx = element.strokeDashPatternMM().map { CGFloat($0 * scale) }
+        let strokeTint = element.stroke.solidColor?.color ?? elementColor(element.layer)
         return CoverShapeElementView(
             shapeType: element.shapeType,
             strokeStyle: element.strokeStyle,
+            ornamentPattern: element.ornamentPattern,
             strokeWidthPx: strokePx,
             dashPx: dashPx,
             isFilled: element.isFilled,
-            color: elementColor(element.layer),
+            color: strokeTint,
             fillColor: element.fill.solidColor?.color
         )
         .frame(width: pixelWidth, height: pixelHeight)
@@ -1095,8 +1105,9 @@ struct CoverDesignerView: View {
             size = (widthMM ?? geometry.boardW * 0.4, 4)
         }
         let stroke = defaultStrokeStyle(for: finish)
+        let finishColor = CodableColor.finishDefault(for: finish)
         let fill: CoverPaint = (finish == .deboss && type != .line)
-            ? .solid(.finishDefault(for: finish))
+            ? .solid(finishColor)
             : .none
         let new = CoverDesignElement(
             kind: .shape,
@@ -1112,6 +1123,8 @@ struct CoverDesignerView: View {
             shapeType: type,
             strokeWidthMM: finish == .deboss ? 1.0 : 0.8,
             strokeStyle: stroke,
+            ornamentPattern: .dots,
+            stroke: .solid(finishColor),
             fill: fill
         )
         store.updateSelectedProject { project in
@@ -1517,9 +1530,25 @@ struct CoverDesignerView: View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(project.coverDesignLayers.sorted(by: { $0.zIndex > $1.zIndex })) { layer in
                 layerRow(layer)
+                    .onDrop(
+                        of: [.plainText],
+                        isTargeted: layerDropTargetBinding(layer.id)
+                    ) { providers in
+                        acceptElementDrop(providers, ontoLayer: layer.id)
+                    }
                 if !collapsedLayerIDs.contains(layer.id) {
                     ForEach(elementsInLayer(layer.id)) { element in
                         elementRow(element, layerLocked: layer.isLocked)
+                            .onDrop(
+                                of: [.plainText],
+                                isTargeted: layerDropTargetBinding(layer.id)
+                            ) { providers in
+                                acceptElementDrop(
+                                    providers,
+                                    ontoLayer: layer.id,
+                                    beforeElementID: element.id
+                                )
+                            }
                     }
                 }
             }
@@ -1601,6 +1630,13 @@ struct CoverDesignerView: View {
                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.22)
                       : Color(nsColor: .controlBackgroundColor).opacity(0.55))
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(
+                    layerDropTargetID == layer.id ? Color.accentColor : Color.clear,
+                    lineWidth: 1.5
+                )
+        }
         .contextMenu {
             Button("Bring Forward") { moveLayer(layer.id, direction: 1) }
             Button("Send Backward") { moveLayer(layer.id, direction: -1) }
@@ -1608,7 +1644,7 @@ struct CoverDesignerView: View {
             Button("Delete Layer", role: .destructive) { deleteLayer(layer.id) }
                 .disabled(project.coverDesignLayers.count <= 1)
         }
-        .help(isActive ? "Active layer — new elements are added here" : "Click to make this the active layer")
+        .help(isActive ? "Active layer — new elements are added here" : "Drop elements here, or click to make this the active layer")
     }
 
     private func elementRow(_ element: CoverDesignElement, layerLocked: Bool) -> some View {
@@ -1652,6 +1688,9 @@ struct CoverDesignerView: View {
             activeFinish = element.layer
             store.updateSelectedProject { $0.activeCoverLayerID = element.designLayerID }
         }
+        .onDrag {
+            NSItemProvider(object: element.id.uuidString as NSString)
+        }
         .contextMenu {
             Button("Duplicate") { duplicateElement(element.id) }
                 .disabled(layerLocked)
@@ -1676,6 +1715,7 @@ struct CoverDesignerView: View {
                 }
             }
         }
+        .help("Drag onto a layer to move")
     }
 
     private func finishBadge(_ finish: CoverElementLayer) -> some View {
@@ -1725,15 +1765,6 @@ struct CoverDesignerView: View {
                     }
                 }
             }
-            labeledControl("Layer") {
-                Picker("", selection: elementDesignLayerBinding(element.id)) {
-                    ForEach(project.coverDesignLayers.sorted(by: { $0.zIndex > $1.zIndex })) { layer in
-                        Text(layer.name).tag(layer.id)
-                    }
-                }
-                .labelsHidden()
-            }
-
             Divider()
 
             switch element.kind {
@@ -1914,15 +1945,19 @@ struct CoverDesignerView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                labeledControl("Stroke") {
+                labeledControl("Style") {
                     StrokeDashControls(
                         selected: element.strokeStyle,
-                        strokeColor: finishSwatchColor(element.layer),
+                        ornamentPattern: element.ornamentPattern,
+                        strokeColor: element.stroke.solidColor?.color ?? finishSwatchColor(element.layer),
                         dashLengthScale: element.dashLengthScale,
                         dashGapScale: element.dashGapScale,
                         strokeWidthMM: element.strokeWidthMM,
                         onStyleChange: { style in
                             updateElement(element.id, syncStamp: false) { $0.strokeStyle = style }
+                        },
+                        onPatternChange: { pattern in
+                            updateElement(element.id, syncStamp: false) { $0.ornamentPattern = pattern }
                         },
                         onDashLengthChange: { value in
                             updateElement(element.id, syncStamp: false) { $0.dashLengthScale = value }
@@ -1934,26 +1969,60 @@ struct CoverDesignerView: View {
                     )
                 }
                 labeledControl("Stroke mm") {
-                    CoverInspectorNumberField(
-                        value: element.strokeWidthMM,
-                        fractionDigits: 2,
-                        onCommit: { value in
-                            updateElement(element.id, syncStamp: false) {
-                                $0.strokeWidthMM = min(10, max(0.1, value))
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: elementStrokeWidthBinding(element.id),
+                            in: 0.1...10
+                        ) { editing in
+                            isInspectorEditing = editing
+                            if !editing {
+                                store.save()
                             }
-                        },
-                        onEditingChanged: { isInspectorEditing = $0 }
-                    )
-                }
-                if element.shapeType != .line {
-                    labeledControl("Fill") {
-                        FillControls(
-                            fill: element.fill,
-                            defaultSolid: .finishDefault(for: element.layer),
-                            onChange: { paint in
-                                updateElement(element.id, syncStamp: false) { $0.fill = paint }
-                            }
+                        }
+                        CoverInspectorNumberField(
+                            value: element.strokeWidthMM,
+                            fractionDigits: 2,
+                            width: 52,
+                            onCommit: { value in
+                                updateElement(element.id, syncStamp: false) {
+                                    $0.strokeWidthMM = min(10, max(0.1, value))
+                                }
+                            },
+                            onEditingChanged: { isInspectorEditing = $0 }
                         )
+                    }
+                }
+                labeledControl("Color") {
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Stroke")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            PaintColorWell(
+                                paint: element.stroke,
+                                defaultSolid: .finishDefault(for: element.layer),
+                                allowsNone: true,
+                                onChange: { paint in
+                                    updateElement(element.id, syncStamp: false) { $0.stroke = paint }
+                                }
+                            )
+                        }
+                        if element.shapeType != .line {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                PaintColorWell(
+                                    paint: element.fill,
+                                    defaultSolid: .finishDefault(for: element.layer),
+                                    allowsNone: true,
+                                    onChange: { paint in
+                                        updateElement(element.id, syncStamp: false) { $0.fill = paint }
+                                    }
+                                )
+                            }
+                        }
+                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -2185,6 +2254,44 @@ struct CoverDesignerView: View {
         store.updateSelectedProject { $0.moveCoverElementWithinLayer(id, direction: direction) }
     }
 
+    private func layerDropTargetBinding(_ layerID: UUID) -> Binding<Bool> {
+        Binding(
+            get: { layerDropTargetID == layerID },
+            set: { isTargeted in
+                if isTargeted {
+                    layerDropTargetID = layerID
+                } else if layerDropTargetID == layerID {
+                    layerDropTargetID = nil
+                }
+            }
+        )
+    }
+
+    private func acceptElementDrop(
+        _ providers: [NSItemProvider],
+        ontoLayer layerID: UUID,
+        beforeElementID: UUID? = nil
+    ) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let raw = object as? String,
+                  let elementID = UUID(uuidString: raw) else { return }
+            DispatchQueue.main.async {
+                store.updateSelectedProject {
+                    $0.moveCoverElement(
+                        elementID,
+                        toLayer: layerID,
+                        beforeElementID: beforeElementID
+                    )
+                    $0.activeCoverLayerID = layerID
+                }
+                selectedElementID = elementID
+                layerDropTargetID = nil
+            }
+        }
+        return true
+    }
+
     private func moveLayer(_ id: UUID, direction: Int) {
         store.updateSelectedProject { project in
             guard let index = project.coverDesignLayers.firstIndex(where: { $0.id == id }) else { return }
@@ -2274,33 +2381,6 @@ struct CoverDesignerView: View {
         )
     }
 
-    private func elementLayerBinding(_ id: UUID) -> Binding<CoverElementLayer> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.layer ?? .ink },
-            set: { value in
-                updateElement(id) { $0.layer = value }
-                if value == .foil {
-                    store.updateSelectedProject { $0.showFoilLayer = true }
-                }
-                if value == .deboss {
-                    store.updateSelectedProject { $0.showDebossLayer = true }
-                }
-            }
-        )
-    }
-
-    private func elementDesignLayerBinding(_ id: UUID) -> Binding<UUID> {
-        Binding(
-            get: {
-                project.coverElements.first { $0.id == id }?.designLayerID
-                    ?? project.activeCoverLayerID
-                    ?? project.coverDesignLayers.first?.id
-                    ?? UUID()
-            },
-            set: { value in updateElement(id, syncStamp: false) { $0.designLayerID = value } }
-        )
-    }
-
     private func elementStyleBinding(_ id: UUID) -> Binding<CoverFontStyle> {
         Binding(
             get: { project.coverElements.first { $0.id == id }?.fontStyle ?? .body },
@@ -2329,6 +2409,17 @@ struct CoverDesignerView: View {
             get: { project.coverElements.first { $0.id == id }?.opacity ?? 1 },
             set: { value in
                 updateElement(id, syncStamp: false, save: false) { $0.opacity = min(1, max(0.1, value)) }
+            }
+        )
+    }
+
+    private func elementStrokeWidthBinding(_ id: UUID) -> Binding<Double> {
+        Binding(
+            get: { project.coverElements.first { $0.id == id }?.strokeWidthMM ?? 0.8 },
+            set: { value in
+                updateElement(id, syncStamp: false, save: false) {
+                    $0.strokeWidthMM = min(10, max(0.1, value))
+                }
             }
         )
     }
