@@ -195,12 +195,8 @@ struct BindingJob: Equatable, Codable {
     var signatureSize: SignatureSize = .sextodecimo
     var frontEndpapers = 2
     var backEndpapers = 2
-    /// When set, front endpaper slots use this image/PDF instead of blank pages.
-    var frontEndpaperArtwork: EndpaperArtwork?
-    /// When set, back endpaper slots use this image/PDF instead of blank pages.
-    var backEndpaperArtwork: EndpaperArtwork?
-    var frontEndpaperColor: EndpaperColor = .none
-    var backEndpaperColor: EndpaperColor = .none
+    /// Front / back decorative design (blank, solid, artwork, or procedural marbling).
+    var endpapers = EndpaperDesign()
     var pageNumbers = PageNumberOptions()
     var watermark = WatermarkOptions()
     var addCropMarks = false
@@ -226,6 +222,50 @@ struct BindingJob: Equatable, Codable {
     static let duplexHintText = "Print duplex, flip on short edge (tumble). Keep sheet order."
 
     var duplexHint: String { Self.duplexHintText }
+
+    // MARK: Convenience accessors (Imposition UI / assembly)
+
+    var frontEndpaperArtwork: EndpaperArtwork? {
+        get { endpapers.front.artwork }
+        set {
+            endpapers.front.artwork = newValue
+            if newValue != nil { endpapers.front.mode = .artwork }
+            else if endpapers.front.mode == .artwork { endpapers.front.syncModeFromContents() }
+        }
+    }
+
+    var backEndpaperArtwork: EndpaperArtwork? {
+        get { endpapers.back.artwork }
+        set {
+            endpapers.back.artwork = newValue
+            if newValue != nil { endpapers.back.mode = .artwork }
+            else if endpapers.back.mode == .artwork { endpapers.back.syncModeFromContents() }
+        }
+    }
+
+    var frontEndpaperColor: EndpaperColor {
+        get { endpapers.front.solidColor }
+        set {
+            endpapers.front.solidColor = newValue
+            if newValue != .none, endpapers.front.mode != .marbled, endpapers.front.artwork == nil {
+                endpapers.front.mode = .solidColor
+            } else if newValue == .none, endpapers.front.mode == .solidColor {
+                endpapers.front.mode = .blank
+            }
+        }
+    }
+
+    var backEndpaperColor: EndpaperColor {
+        get { endpapers.back.solidColor }
+        set {
+            endpapers.back.solidColor = newValue
+            if newValue != .none, endpapers.back.mode != .marbled, endpapers.back.artwork == nil {
+                endpapers.back.mode = .solidColor
+            } else if newValue == .none, endpapers.back.mode == .solidColor {
+                endpapers.back.mode = .blank
+            }
+        }
+    }
 
     /// Resolved single-page trim size, or `nil` to keep each source page’s size.
     var resolvedTrimSize: CGSize? {
@@ -256,6 +296,70 @@ struct BindingJob: Equatable, Codable {
         case .coptic: bindingStyle = .coptic
         case .saddleStitch: bindingStyle = .saddleStitch
         }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bindingStyle, signatureSize, frontEndpapers, backEndpapers, endpapers
+        case frontEndpaperArtwork, backEndpaperArtwork, frontEndpaperColor, backEndpaperColor
+        case pageNumbers, watermark, addCropMarks, showGuideMarks, showStitchHoleMarks
+        case stitchHoleCount, paperSize, customPageWidth, customPageHeight
+        case normalizeOrientation, creepPoints, bleedPoints
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bindingStyle = try container.decodeIfPresent(BindingStyle.self, forKey: .bindingStyle) ?? .sectionSewn
+        signatureSize = try container.decodeIfPresent(SignatureSize.self, forKey: .signatureSize) ?? .sextodecimo
+        frontEndpapers = try container.decodeIfPresent(Int.self, forKey: .frontEndpapers) ?? 2
+        backEndpapers = try container.decodeIfPresent(Int.self, forKey: .backEndpapers) ?? 2
+        if let design = try container.decodeIfPresent(EndpaperDesign.self, forKey: .endpapers) {
+            endpapers = design
+        } else {
+            var front = EndpaperFaceDesign()
+            var back = EndpaperFaceDesign()
+            front.artwork = try container.decodeIfPresent(EndpaperArtwork.self, forKey: .frontEndpaperArtwork)
+            back.artwork = try container.decodeIfPresent(EndpaperArtwork.self, forKey: .backEndpaperArtwork)
+            front.solidColor = try container.decodeIfPresent(EndpaperColor.self, forKey: .frontEndpaperColor) ?? .none
+            back.solidColor = try container.decodeIfPresent(EndpaperColor.self, forKey: .backEndpaperColor) ?? .none
+            front.syncModeFromContents()
+            back.syncModeFromContents()
+            endpapers = EndpaperDesign(front: front, back: back)
+        }
+        pageNumbers = try container.decodeIfPresent(PageNumberOptions.self, forKey: .pageNumbers) ?? PageNumberOptions()
+        watermark = try container.decodeIfPresent(WatermarkOptions.self, forKey: .watermark) ?? WatermarkOptions()
+        addCropMarks = try container.decodeIfPresent(Bool.self, forKey: .addCropMarks) ?? false
+        showGuideMarks = try container.decodeIfPresent(Bool.self, forKey: .showGuideMarks) ?? false
+        showStitchHoleMarks = try container.decodeIfPresent(Bool.self, forKey: .showStitchHoleMarks) ?? false
+        stitchHoleCount = try container.decodeIfPresent(StitchHoleCount.self, forKey: .stitchHoleCount) ?? .auto
+        paperSize = try container.decodeIfPresent(PaperSize.self, forKey: .paperSize) ?? .source
+        customPageWidth = try container.decodeIfPresent(CGFloat.self, forKey: .customPageWidth) ?? 612
+        customPageHeight = try container.decodeIfPresent(CGFloat.self, forKey: .customPageHeight) ?? 792
+        normalizeOrientation = try container.decodeIfPresent(Bool.self, forKey: .normalizeOrientation) ?? true
+        creepPoints = try container.decodeIfPresent(CGFloat.self, forKey: .creepPoints) ?? 0
+        bleedPoints = try container.decodeIfPresent(CGFloat.self, forKey: .bleedPoints) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bindingStyle, forKey: .bindingStyle)
+        try container.encode(signatureSize, forKey: .signatureSize)
+        try container.encode(frontEndpapers, forKey: .frontEndpapers)
+        try container.encode(backEndpapers, forKey: .backEndpapers)
+        try container.encode(endpapers, forKey: .endpapers)
+        try container.encode(pageNumbers, forKey: .pageNumbers)
+        try container.encode(watermark, forKey: .watermark)
+        try container.encode(addCropMarks, forKey: .addCropMarks)
+        try container.encode(showGuideMarks, forKey: .showGuideMarks)
+        try container.encode(showStitchHoleMarks, forKey: .showStitchHoleMarks)
+        try container.encode(stitchHoleCount, forKey: .stitchHoleCount)
+        try container.encode(paperSize, forKey: .paperSize)
+        try container.encode(customPageWidth, forKey: .customPageWidth)
+        try container.encode(customPageHeight, forKey: .customPageHeight)
+        try container.encode(normalizeOrientation, forKey: .normalizeOrientation)
+        try container.encode(creepPoints, forKey: .creepPoints)
+        try container.encode(bleedPoints, forKey: .bleedPoints)
     }
 }
 

@@ -224,10 +224,8 @@ final class BindingWorkspace: ObservableObject {
                     padPages: plan.padPages,
                     targetPageSize: targetSize,
                     normalizeOrientation: jobSnapshot.normalizeOrientation,
-                    frontEndpaperArtwork: jobSnapshot.frontEndpaperArtwork,
-                    backEndpaperArtwork: jobSnapshot.backEndpaperArtwork,
-                    frontEndpaperColor: jobSnapshot.frontEndpaperColor,
-                    backEndpaperColor: jobSnapshot.backEndpaperColor
+                    frontEndpaperDesign: jobSnapshot.endpapers.front,
+                    backEndpaperDesign: jobSnapshot.endpapers.back
                 )
 
                 let decorated = PageDecorationService.decorate(

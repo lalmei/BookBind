@@ -323,9 +323,8 @@ enum CoverBlueprintService {
         let h = max(1, element.heightMM) * scale
         let strokeW = max(0.2, element.strokeWidthMM) * scale
         let color = finishColor(element.layer)
-        let dash = element.strokeStyle
-            .dashPatternMM(strokeWidthMM: element.strokeWidthMM)
-            .map { CGFloat($0 * scale) }
+        let fillNSColor = element.fill.solidColor?.nsColor ?? color
+        let dash = element.strokeDashPatternMM().map { CGFloat($0 * scale) }
 
         context.saveGState()
         context.translateBy(x: point.x, y: point.y)
@@ -346,7 +345,7 @@ enum CoverBlueprintService {
         switch element.shapeType {
         case .rectangle:
             if element.isFilled {
-                context.setFillColor(color.withAlphaComponent(color.alphaComponent * 0.9).cgColor)
+                context.setFillColor(fillNSColor.withAlphaComponent(fillNSColor.alphaComponent * 0.9).cgColor)
                 context.fill(rect)
             }
             context.stroke(rect, width: strokeW)
@@ -356,7 +355,7 @@ enum CoverBlueprintService {
             }
         case .ellipse:
             if element.isFilled {
-                context.setFillColor(color.withAlphaComponent(color.alphaComponent * 0.9).cgColor)
+                context.setFillColor(fillNSColor.withAlphaComponent(fillNSColor.alphaComponent * 0.9).cgColor)
                 context.fillEllipse(in: rect)
             }
             context.strokeEllipse(in: rect)
@@ -507,8 +506,11 @@ enum CoverBlueprintService {
         // Inset so the stroke stays inside the element bounds, matching the canvas.
         let w = max(1, element.widthMM) - strokeW
         let h = max(1, element.heightMM) - strokeW
-        let fill = (element.isFilled && element.shapeType != .line) ? color : "none"
-        let dashValues = element.strokeStyle.dashPatternMM(strokeWidthMM: element.strokeWidthMM)
+        let fill: String = {
+            guard element.shapeType != .line, let solid = element.fill.solidColor else { return "none" }
+            return hexFromCodable(solid)
+        }()
+        let dashValues = element.strokeDashPatternMM()
         var strokeAttrs = "stroke=\"\(color)\" stroke-width=\"\(fmt(strokeW))\""
         if !dashValues.isEmpty {
             strokeAttrs += " stroke-dasharray=\"\(dashValues.map(fmt).joined(separator: " "))\""
@@ -564,6 +566,13 @@ enum CoverBlueprintService {
 
     private static func fmt(_ value: Double) -> String {
         String(format: "%.2f", value)
+    }
+
+    private static func hexFromCodable(_ color: CodableColor) -> String {
+        let r = Int((color.red * 255).rounded())
+        let g = Int((color.green * 255).rounded())
+        let b = Int((color.blue * 255).rounded())
+        return String(format: "#%02x%02x%02x", r, g, b)
     }
 
     private static func escape(_ text: String) -> String {

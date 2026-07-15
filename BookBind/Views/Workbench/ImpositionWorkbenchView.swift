@@ -18,9 +18,12 @@ struct ImpositionWorkbenchView: View {
     @State private var summaryExpanded = true
     @State private var bindingExpanded = true
     @State private var paperExpanded = true
-    @State private var endpapersExpanded = false
+    @State private var endpapersExpanded = true
     @State private var pageMarksExpanded = false
     @State private var isInspectorVisible = true
+    @State private var showEndpaperDesigner = false
+    /// When opening the designer, focus front (true) or back (false).
+    @State private var endpaperDesignerFocusFront = true
 
     /// Preview + inspector, or preview + collapsed reopen rail.
     private var minimumWorkbenchWidth: CGFloat {
@@ -88,6 +91,33 @@ struct ImpositionWorkbenchView: View {
                 workspace.errorMessage = error.localizedDescription
             }
         }
+        .sheet(isPresented: $showEndpaperDesigner) {
+            EndpaperDesignerView(
+                workspace: workspace,
+                isPresented: $showEndpaperDesigner,
+                initiallyEditingFront: endpaperDesignerFocusFront
+            )
+        }
+    }
+
+    private var frontEndpaperBinding: Binding<EndpaperFaceDesign> {
+        Binding(
+            get: { workspace.job.endpapers.front },
+            set: {
+                workspace.job.endpapers.front = $0
+                workspace.markChanged()
+            }
+        )
+    }
+
+    private var backEndpaperBinding: Binding<EndpaperFaceDesign> {
+        Binding(
+            get: { workspace.job.endpapers.back },
+            set: {
+                workspace.job.endpapers.back = $0
+                workspace.markChanged()
+            }
+        )
     }
 
     // MARK: - Job inspector
@@ -293,22 +323,38 @@ struct ImpositionWorkbenchView: View {
                 }
 
                 collapsibleSection("Endpapers", isExpanded: $endpapersExpanded) {
-                    endpaperRow(
+                    endpaperFaceCard(
                         title: "Front",
                         count: $workspace.job.frontEndpapers,
-                        color: $workspace.job.frontEndpaperColor,
-                        artwork: workspace.job.frontEndpaperArtwork,
-                        choose: workspace.chooseFrontEndpaperArtwork,
-                        clear: workspace.clearFrontEndpaperArtwork
+                        face: frontEndpaperBinding,
+                        isFront: true
                     )
-                    endpaperRow(
+
+                    endpaperFaceCard(
                         title: "Back",
                         count: $workspace.job.backEndpapers,
-                        color: $workspace.job.backEndpaperColor,
-                        artwork: workspace.job.backEndpaperArtwork,
-                        choose: workspace.chooseBackEndpaperArtwork,
-                        clear: workspace.clearBackEndpaperArtwork
+                        face: backEndpaperBinding,
+                        isFront: false
                     )
+
+                    Button {
+                        // Jump straight into marbling for the front face.
+                        var front = workspace.job.endpapers.front
+                        front.ensureMarbling()
+                        workspace.job.endpapers.front = front
+                        workspace.markChanged()
+                        endpaperDesignerFocusFront = true
+                        showEndpaperDesigner = true
+                    } label: {
+                        Label("Marble paper generator", systemImage: "paintbrush.pointed.fill")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(ArtisanTheme.secondary)
+                    .foregroundStyle(Color.black)
+                    .help("Open the procedural marbled-paper generator")
                 }
 
                 collapsibleSection("Page marks", isExpanded: $pageMarksExpanded) {
@@ -676,44 +722,205 @@ struct ImpositionWorkbenchView: View {
         }
     }
 
-    private func endpaperRow(
+    private func endpaperFaceCard(
         title: String,
         count: Binding<Int>,
-        color: Binding<EndpaperColor>,
-        artwork: EndpaperArtwork?,
-        choose: @escaping () -> Void,
-        clear: @escaping () -> Void
+        face: Binding<EndpaperFaceDesign>,
+        isFront: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color(nsColor: .labelColor))
+                Spacer()
+                Stepper(
+                    value: Binding(
+                        get: { count.wrappedValue },
+                        set: {
+                            count.wrappedValue = $0
+                            workspace.refreshPlan()
+                        }
+                    ),
+                    in: 0...16
+                ) {
+                    Text("\(count.wrappedValue) pages")
+                        .font(.callout)
+                        .foregroundStyle(Color(nsColor: .labelColor))
+                        .monospacedDigit()
+                }
+            }
 
-            Stepper(
-                "\(count.wrappedValue) pages",
-                value: Binding(
-                    get: { count.wrappedValue },
-                    set: {
-                        count.wrappedValue = $0
-                        workspace.refreshPlan()
-                    }
-                ),
-                in: 0...16
+            // Vertical mode list — readable in a narrow inspector (segmented 4-up was clipped).
+            VStack(spacing: 4) {
+                ForEach(EndpaperMode.allCases) { mode in
+                    endpaperModeRow(
+                        mode: mode,
+                        isSelected: face.wrappedValue.mode == mode,
+                        action: { endpaperModeBinding(face).wrappedValue = mode }
+                    )
+                }
+            }
+
+            endpaperModeDetails(face: face, isFront: isFront)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.7), lineWidth: 1)
+        )
+    }
+
+    private func endpaperModeRow(mode: EndpaperMode, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: mode.systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isSelected ? ArtisanTheme.secondary : Color(nsColor: .secondaryLabelColor))
+                    .frame(width: 18)
+                Text(mode.title)
+                    .font(.callout.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(Color(nsColor: .labelColor))
+                Spacer(minLength: 0)
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(ArtisanTheme.secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isSelected
+                          ? ArtisanTheme.secondary.opacity(0.18)
+                          : Color.clear)
             )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(mode.help)
+    }
 
-            HStack(spacing: 6) {
-                Picker("", selection: color) {
-                    ForEach(EndpaperColor.allCases) { swatch in
+    @ViewBuilder
+    private func endpaperModeDetails(face: Binding<EndpaperFaceDesign>, isFront: Bool) -> some View {
+        switch face.wrappedValue.mode {
+        case .blank:
+            Text("Plain undecorated leaves")
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+        case .solidColor:
+            HStack {
+                Text("Color")
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                Spacer()
+                Picker("", selection: endpaperColorBinding(face)) {
+                    ForEach(EndpaperColor.allCases.filter { $0 != .none }) { swatch in
                         Text(swatch.rawValue).tag(swatch)
                     }
                 }
                 .labelsHidden()
-                .frame(maxWidth: .infinity)
-                .help("Solid-color endpaper when no artwork is selected")
-
-                endpaperArtworkControl(artwork: artwork, choose: choose, clear: clear)
+                .frame(maxWidth: 160)
             }
+        case .artwork:
+            endpaperArtworkControl(
+                artwork: face.wrappedValue.artwork,
+                choose: {
+                    if isFront { workspace.chooseFrontEndpaperArtwork() }
+                    else { workspace.chooseBackEndpaperArtwork() }
+                },
+                clear: {
+                    if isFront { workspace.clearFrontEndpaperArtwork() }
+                    else { workspace.clearBackEndpaperArtwork() }
+                }
+            )
+        case .marbled:
+            endpaperMarbleSummary(face: face.wrappedValue, isFront: isFront)
         }
+    }
+
+    private func endpaperModeBinding(_ face: Binding<EndpaperFaceDesign>) -> Binding<EndpaperMode> {
+        Binding(
+            get: { face.wrappedValue.mode },
+            set: { mode in
+                var next = face.wrappedValue
+                next.mode = mode
+                switch mode {
+                case .blank:
+                    break
+                case .solidColor:
+                    if next.solidColor == .none { next.solidColor = .archivalIvory }
+                case .artwork:
+                    break
+                case .marbled:
+                    next.ensureMarbling()
+                }
+                face.wrappedValue = next
+            }
+        )
+    }
+
+    private func endpaperColorBinding(_ face: Binding<EndpaperFaceDesign>) -> Binding<EndpaperColor> {
+        Binding(
+            get: {
+                face.wrappedValue.solidColor == .none
+                    ? .archivalIvory
+                    : face.wrappedValue.solidColor
+            },
+            set: { color in
+                var next = face.wrappedValue
+                next.solidColor = color
+                next.mode = .solidColor
+                face.wrappedValue = next
+            }
+        )
+    }
+
+    private func endpaperMarbleSummary(face: EndpaperFaceDesign, isFront: Bool) -> some View {
+        let spec = face.marbling ?? MarbledPaperSpec()
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                EndpaperMarbleThumbnail(spec: spec)
+                    .frame(width: 48, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(spec.style.title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Color(nsColor: .labelColor))
+                    Text("\(spec.palette.count) inks")
+                        .font(.caption)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                endpaperDesignerFocusFront = isFront
+                showEndpaperDesigner = true
+            } label: {
+                Text("Edit marble pattern…")
+                    .font(.callout.weight(.medium))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(ArtisanTheme.secondary)
+            .help("Adjust style, colors, flow, and regenerate variations")
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(ArtisanTheme.secondary.opacity(0.08))
+        )
     }
 
     private func endpaperArtworkControl(
@@ -721,22 +928,20 @@ struct ImpositionWorkbenchView: View {
         choose: @escaping () -> Void,
         clear: @escaping () -> Void
     ) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             if let artwork {
                 Text(artwork.name)
                     .font(.caption2)
                     .lineLimit(1)
-                    .frame(maxWidth: 72)
                     .help(artwork.name)
-                Button(action: clear) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.borderless)
-                .help("Use blank endpapers")
-            } else {
-                Button("Art…", action: choose)
+                Spacer(minLength: 0)
+                Button("Clear", action: clear)
                     .buttonStyle(.borderless)
+                    .help("Remove artwork")
+            } else {
+                Button("Choose artwork…", action: choose)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .help("Use an image or PDF for these endpaper pages")
             }
         }

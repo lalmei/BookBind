@@ -341,7 +341,7 @@ enum PDFDocumentService {
     /// Build the linear book block: front endpapers + content + back endpapers + pad blanks.
     /// When `targetPageSize` is set, every page (including content) is fitted to that size.
     /// When `normalizeOrientation` is set, mixed landscape/portrait pages are rotated to match.
-    /// Endpaper artwork (image or PDF) replaces blank pages when provided.
+    /// Endpaper priority: marbled → artwork → solid color → blank.
     static func buildBookBlock(
         from content: PDFDocument,
         frontEndpapers: Int,
@@ -352,7 +352,9 @@ enum PDFDocumentService {
         frontEndpaperArtwork: EndpaperArtwork? = nil,
         backEndpaperArtwork: EndpaperArtwork? = nil,
         frontEndpaperColor: EndpaperColor = .none,
-        backEndpaperColor: EndpaperColor = .none
+        backEndpaperColor: EndpaperColor = .none,
+        frontEndpaperDesign: EndpaperFaceDesign? = nil,
+        backEndpaperDesign: EndpaperFaceDesign? = nil
     ) -> PDFDocument {
         let wantPortrait: Bool = {
             if let targetPageSize {
@@ -371,13 +373,18 @@ enum PDFDocumentService {
 
         let output = PDFDocument()
 
-        appendEndpaperPages(
-            to: output,
-            count: max(0, frontEndpapers),
-            size: size,
-            artwork: frontEndpaperArtwork,
-            color: frontEndpaperColor
+        let frontFace = frontEndpaperDesign ?? EndpaperFaceDesign(
+            mode: frontEndpaperArtwork != nil ? .artwork : (frontEndpaperColor == .none ? .blank : .solidColor),
+            solidColor: frontEndpaperColor,
+            artwork: frontEndpaperArtwork
         )
+        let backFace = backEndpaperDesign ?? EndpaperFaceDesign(
+            mode: backEndpaperArtwork != nil ? .artwork : (backEndpaperColor == .none ? .blank : .solidColor),
+            solidColor: backEndpaperColor,
+            artwork: backEndpaperArtwork
+        )
+
+        appendEndpaperPages(to: output, count: max(0, frontEndpapers), size: size, face: frontFace)
 
         for pageIndex in 0..<content.pageCount {
             guard let page = content.page(at: pageIndex) else { continue }
@@ -389,13 +396,7 @@ enum PDFDocumentService {
             appendPDFData(fitPageData(pageToPlace, to: size), to: output)
         }
 
-        appendEndpaperPages(
-            to: output,
-            count: max(0, backEndpapers),
-            size: size,
-            artwork: backEndpaperArtwork,
-            color: backEndpaperColor
-        )
+        appendEndpaperPages(to: output, count: max(0, backEndpapers), size: size, face: backFace)
 
         for _ in 0..<max(0, padPages) {
             appendBlankPage(to: output, size: size)
@@ -409,16 +410,52 @@ enum PDFDocumentService {
         to document: PDFDocument,
         count: Int,
         size: CGSize,
-        artwork: EndpaperArtwork?,
-        color: EndpaperColor = .none
+        face: EndpaperFaceDesign
     ) {
         guard count > 0 else { return }
-        guard let artwork else {
+
+        switch face.mode {
+        case .marbled:
+            if let spec = face.marbling,
+               let image = MarbledPaperGenerator.nsImage(spec: spec, sizePoints: size, dpi: 300) {
+                let data = fitImageData(image, to: size)
+                for _ in 0..<count {
+                    appendPDFData(data, to: document)
+                }
+                return
+            }
+            // Fall through if marbling failed to render.
+            fallthrough
+        case .blank:
             for _ in 0..<count {
-                if color == .none {
+                appendBlankPage(to: document, size: size)
+            }
+            return
+        case .solidColor:
+            for _ in 0..<count {
+                if face.solidColor == .none {
                     appendBlankPage(to: document, size: size)
                 } else {
-                    appendPDFData(renderColorPDF(bounds: CGRect(origin: .zero, size: size), color: color.cgColor), to: document)
+                    appendPDFData(
+                        renderColorPDF(bounds: CGRect(origin: .zero, size: size), color: face.solidColor.cgColor),
+                        to: document
+                    )
+                }
+            }
+            return
+        case .artwork:
+            break
+        }
+
+        guard let artwork = face.artwork else {
+            for _ in 0..<count {
+                if face.solidColor == .none {
+                    appendBlankPage(to: document, size: size)
+                } else {
+                    appendPDFData(
+                        renderColorPDF(bounds: CGRect(origin: .zero, size: size), color: face.solidColor.cgColor),
+                        to: document
+                    )
                 }
             }
             return
