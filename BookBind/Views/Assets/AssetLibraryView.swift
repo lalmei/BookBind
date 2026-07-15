@@ -32,6 +32,7 @@ struct AssetLibraryView: View {
             .padding(36)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(ArtisanTheme.surfaceBright)
     }
 
     private var header: some View {

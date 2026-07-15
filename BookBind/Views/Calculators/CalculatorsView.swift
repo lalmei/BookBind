@@ -42,22 +42,22 @@ struct CalculatorsView: View {
             .frame(maxWidth: 560, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .foregroundStyle(.black)
-        .background(Color.white)
+        .foregroundStyle(ArtisanTheme.onSurface)
+        .background(ArtisanTheme.surfaceBright)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Calculators")
                 .font(ArtisanTheme.displayFont)
-                .foregroundStyle(.black)
+                .foregroundStyle(ArtisanTheme.primary)
             Text("Quick measurements without opening a project.")
                 .font(.callout)
-                .foregroundStyle(.black.opacity(0.7))
+                .foregroundStyle(ArtisanTheme.onSurfaceVariant)
             if let project = store.selectedProject {
                 Text("Active project: \(project.title)")
                     .font(ArtisanTheme.technicalCaption)
-                    .foregroundStyle(.black.opacity(0.55))
+                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.85))
             }
         }
     }
@@ -66,7 +66,7 @@ struct CalculatorsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Spine width")
                 .font(ArtisanTheme.sectionFont)
-                .foregroundStyle(.black)
+                .foregroundStyle(ArtisanTheme.primary)
 
             gridRow("Pages", IntField(value: $pageCount))
             gridRow("Paper GSM", DoubleField(value: $gsm))
@@ -86,7 +86,6 @@ struct CalculatorsView: View {
                     }
                 }
                 .buttonStyle(.link)
-                .foregroundStyle(.black)
             }
         }
     }
@@ -95,7 +94,7 @@ struct CalculatorsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("GSM ↔ bond")
                 .font(ArtisanTheme.sectionFont)
-                .foregroundStyle(.black)
+                .foregroundStyle(ArtisanTheme.primary)
 
             gridRow("GSM", DoubleField(value: $gsm, onEdit: {
                 bondLb = BindingMath.gsmToBondLb(gsm)
@@ -106,7 +105,7 @@ struct CalculatorsView: View {
 
             Text(String(format: "Sheet caliper ≈ %.3f mm", BindingMath.sheetThicknessMM(gsm: gsm)))
                 .font(ArtisanTheme.technicalCaption)
-                .foregroundStyle(.black.opacity(0.7))
+                .foregroundStyle(ArtisanTheme.onSurfaceVariant)
         }
     }
 
@@ -114,21 +113,20 @@ struct CalculatorsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Creep hint")
                 .font(ArtisanTheme.sectionFont)
-                .foregroundStyle(.black)
+                .foregroundStyle(ArtisanTheme.primary)
 
             gridRow("Sheets / signature", IntField(value: $sheetsPerSignature))
             resultRow("Suggested creep", String(format: "%.1f pt", creep))
 
             Text("Copy into a project’s Imposition settings after a proof pull.")
                 .font(.caption)
-                .foregroundStyle(.black.opacity(0.55))
+                .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.85))
 
             if store.selectedProject != nil {
                 Button("Apply Creep to Project") {
                     applyCreepToProject()
                 }
                 .buttonStyle(.link)
-                .foregroundStyle(.black)
             }
         }
     }
@@ -136,7 +134,7 @@ struct CalculatorsView: View {
     private func gridRow<Content: View>(_ label: String, _ content: Content) -> some View {
         HStack {
             Text(label)
-                .foregroundStyle(.black.opacity(0.7))
+                .foregroundStyle(ArtisanTheme.onSurfaceVariant)
             Spacer()
             content
                 .frame(width: 100, alignment: .trailing)
@@ -147,11 +145,11 @@ struct CalculatorsView: View {
     private func resultRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
-                .foregroundStyle(.black)
+                .foregroundStyle(ArtisanTheme.onSurface)
             Spacer()
             Text(value)
                 .font(ArtisanTheme.technicalFont)
-                .foregroundStyle(.black)
+                .foregroundStyle(ArtisanTheme.secondary)
         }
         .padding(.top, 6)
     }
@@ -188,7 +186,7 @@ private struct IntField: View {
     var body: some View {
         TextField("", value: $value, format: .number)
             .multilineTextAlignment(.trailing)
-            .monochromeInput()
+            .darkCalculatorInput()
     }
 }
 
@@ -209,26 +207,28 @@ private struct DoubleField: View {
             format: .number.precision(.fractionLength(0...2))
         )
         .multilineTextAlignment(.trailing)
-        .monochromeInput()
+        .darkCalculatorInput()
     }
 }
 
 private extension View {
-    func monochromeInput() -> some View {
+    func darkCalculatorInput() -> some View {
         self
             .textFieldStyle(.plain)
-            .foregroundStyle(.white)
+            .foregroundStyle(ArtisanTheme.onSurface)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(Color.black, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(ArtisanTheme.surfaceContainer, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                    .stroke(ArtisanTheme.outlineVariant.opacity(0.8), lineWidth: 1)
             }
     }
 }
 
 #Preview {
     CalculatorsView()
+        .environmentObject(AppStore())
+        .preferredColorScheme(.dark)
         .frame(width: 700, height: 640)
 }

@@ -1,28 +1,29 @@
 import AppKit
 import SwiftUI
 
-/// Digital paper tokens for BookBind's bindery workbench.
+/// Digital bindery tokens for BookBind's dark workbench.
 enum ArtisanTheme {
-    static let surface = Color(red: 0.976, green: 0.976, blue: 1.0) // #f9f9ff
-    static let surfaceBright = Color(hex: 0xf9f9ff)
-    static let surfaceContainerLowest = Color(hex: 0xffffff)
-    static let surfaceContainerLow = Color(hex: 0xf0f3ff)
-    static let surfaceContainer = Color(hex: 0xe7eeff)
-    static let surfaceContainerHigh = Color(hex: 0xdee8ff)
-    static let surfaceVariant = Color(hex: 0xd8e3fa)
-    static let primary = Color(hex: 0x002045)
-    static let primaryContainer = Color(hex: 0x1a365d)
+    static let surface = Color(hex: 0x121820)
+    static let surfaceBright = Color(hex: 0x0e131a)
+    static let surfaceContainerLowest = Color(hex: 0x171e28)
+    static let surfaceContainerLow = Color(hex: 0x1c2430)
+    static let surfaceContainer = Color(hex: 0x222b38)
+    static let surfaceContainerHigh = Color(hex: 0x2a3444)
+    static let surfaceVariant = Color(hex: 0x323c4d)
+    /// Light ink for titles and accents on dark surfaces.
+    static let primary = Color(hex: 0xc5d7f5)
+    static let primaryContainer = Color(hex: 0x2a3f5c)
     static let primaryFixed = Color(hex: 0xd6e3ff)
-    static let secondary = Color(hex: 0x735c00)
-    static let secondaryContainer = Color(hex: 0xfed65b)
-    static let tertiary = Color(hex: 0x20211c)
-    static let tertiaryFixed = Color(hex: 0xe4e3db)
-    static let onSurface = Color(hex: 0x111c2c)
-    static let onSurfaceVariant = Color(hex: 0x43474e)
-    static let outline = Color(hex: 0x74777f)
-    static let outlineVariant = Color(hex: 0xc4c6cf)
-    static let note = Color(red: 0.55, green: 0.45, blue: 0.28)
-    static let rule = Color.primary.opacity(0.08)
+    static let secondary = Color(hex: 0xf0c94b)
+    static let secondaryContainer = Color(hex: 0x5c4a10)
+    static let tertiary = Color(hex: 0xe4e3db)
+    static let tertiaryFixed = Color(hex: 0x2a2b26)
+    static let onSurface = Color(hex: 0xe8eef7)
+    static let onSurfaceVariant = Color(hex: 0xa9b3c2)
+    static let outline = Color(hex: 0x7a8494)
+    static let outlineVariant = Color(hex: 0x3a4454)
+    static let note = Color(red: 0.78, green: 0.68, blue: 0.42)
+    static let rule = Color.primary.opacity(0.12)
 
     static let gutter: CGFloat = 24
     static let marginDesktop: CGFloat = 48
@@ -69,7 +70,7 @@ enum ArtisanTheme {
         .system(.caption, design: .monospaced)
     }
 
-    static func cardShadow(color: Color = primary.opacity(0.08), radius: CGFloat = 26) -> some ViewModifier {
+    static func cardShadow(color: Color = Color.black.opacity(0.35), radius: CGFloat = 26) -> some ViewModifier {
         ShadowModifier(color: color, radius: radius)
     }
 

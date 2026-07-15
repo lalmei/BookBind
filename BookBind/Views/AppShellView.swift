@@ -6,17 +6,49 @@ struct AppShellView: View {
     @StateObject private var store = AppStore()
     @State private var renamingProject: BinderyProject?
     @State private var projectPendingDeletion: BinderyProject?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var sidebarWidth: CGFloat = 240
+
+    private var sidebarCollapsed: Bool {
+        columnVisibility == .detailOnly || sidebarWidth < 120
+    }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: SidebarWidthKey.self, value: geo.size.width)
+                    }
+                )
         } detail: {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(ArtisanTheme.surfaceBright)
+                .toolbar {
+                    if columnVisibility == .detailOnly {
+                        ToolbarItem(placement: .navigation) {
+                            Button {
+                                withAnimation {
+                                    columnVisibility = .all
+                                }
+                            } label: {
+                                Image("BrandMark")
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                    .foregroundStyle(ArtisanTheme.primary)
+                            }
+                            .help("Show Sidebar")
+                        }
+                    }
+                }
         }
+        .preferredColorScheme(.dark)
         .tint(ArtisanTheme.primary)
+        .onPreferenceChange(SidebarWidthKey.self) { sidebarWidth = $0 }
         .sheet(isPresented: $store.showNewMasterwork) {
             NewMasterworkSheet { title, author, height, width, architecture in
                 store.createMasterwork(
@@ -77,10 +109,13 @@ struct AppShellView: View {
                 }
             }
         )) {
-            Section("Workbench") {
+            Section {
                 ForEach(GlobalDestination.allCases) { destination in
-                    Label(destination.title, systemImage: destination.systemImage)
-                        .tag(SidebarSelection.global(destination))
+                    sidebarDestinationRow(destination)
+                }
+            } header: {
+                if !sidebarCollapsed {
+                    Text("Workbench")
                 }
             }
 
@@ -159,19 +194,77 @@ struct AppShellView: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .top) {
+            sidebarBrandHeader
+        }
         .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 10) {
-                SidebarQuickActionsView(
-                    onNewMasterwork: { store.showNewMasterwork = true },
-                    onSignatureLayout: { store.startQuickWork(.imposition) },
-                    onCoverAndSpine: { store.startQuickWork(.cover) },
-                    onMaterialsLog: { store.startQuickWork(.materials) }
-                )
+            if !sidebarCollapsed {
+                VStack(alignment: .leading, spacing: 10) {
+                    SidebarQuickActionsView(
+                        onNewMasterwork: { store.showNewMasterwork = true },
+                        onSignatureLayout: { store.startQuickWork(.imposition) },
+                        onCoverAndSpine: { store.startQuickWork(.cover) },
+                        onMaterialsLog: { store.startQuickWork(.materials) }
+                    )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .windowBackgroundColor))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    private var sidebarBrandHeader: some View {
+        Group {
+            if sidebarCollapsed {
+                Image("BrandMark")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                    .foregroundStyle(ArtisanTheme.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .help("BookBind")
+            } else {
+                HStack(spacing: 10) {
+                    Image("BrandMark")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(ArtisanTheme.primary)
+                    Text("BookBind")
+                        .font(ArtisanTheme.cardTitleFont)
+                        .foregroundStyle(ArtisanTheme.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func sidebarDestinationRow(_ destination: GlobalDestination) -> some View {
+        if destination == .home {
+            Label {
+                Text(destination.title)
+            } icon: {
+                Image("BrandMark")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+            }
+            .tag(SidebarSelection.global(destination))
+        } else {
+            Label(destination.title, systemImage: destination.systemImage)
+                .tag(SidebarSelection.global(destination))
         }
     }
 
@@ -328,6 +421,13 @@ private struct SidebarQuickActionsView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+}
+
+private struct SidebarWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 240
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
