@@ -9,7 +9,7 @@ struct CoverDesignerView: View {
     @ObservedObject var chrome: CoverEditorChrome
 
     @State private var selectedElementID: UUID?
-    @State private var canvasTool: CanvasTool = .select
+    @State private var canvasTool: DesignCanvasTool = .select
     @GestureState private var pinchMagnification: CGFloat = 1.0
     @State private var isDraggingElement = false
     @State private var elementDragOrigin: CGSize = .zero
@@ -33,48 +33,6 @@ struct CoverDesignerView: View {
     @State private var shapeDragStart: CGPoint?
     @State private var shapeDragCurrent: CGPoint?
     @State private var isInspectorEditing = false
-
-    private enum CanvasTool: String, CaseIterable, Identifiable {
-        case select
-        case text
-        case image
-        case rectangle
-        case ellipse
-        case line
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .select: return "Select"
-            case .text: return "Text"
-            case .image: return "Image"
-            case .rectangle: return "Rectangle"
-            case .ellipse: return "Ellipse"
-            case .line: return "Line"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .select: return "cursorarrow"
-            case .text: return "character.cursor.ibeam"
-            case .image: return "photo.on.rectangle"
-            case .rectangle: return "rectangle"
-            case .ellipse: return "oval"
-            case .line: return "line.diagonal"
-            }
-        }
-
-        var shapeType: CoverShapeType? {
-            switch self {
-            case .rectangle: return .rectangle
-            case .ellipse: return .ellipse
-            case .line: return .line
-            case .select, .text, .image: return nil
-            }
-        }
-    }
 
     private var liveZoom: Double {
         chrome.zoomFactor * Double(pinchMagnification)
@@ -261,6 +219,13 @@ struct CoverDesignerView: View {
                 Divider()
                     .frame(height: 22)
 
+                Button {
+                    duplicateSelected()
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                .help("Duplicate selected element (⌘D)")
+
                 Button("Delete", role: .destructive) {
                     deleteSelected()
                 }
@@ -283,8 +248,9 @@ struct CoverDesignerView: View {
 
     private var canvasToolStrip: some View {
         HStack(spacing: 2) {
-            ForEach(CanvasTool.allCases) { tool in
+            ForEach(DesignCanvasTool.allCases) { tool in
                 Button {
+                    // Creation tool only — never mutates the current selection's type.
                     canvasTool = tool
                 } label: {
                     Image(systemName: tool.systemImage)
@@ -732,15 +698,16 @@ struct CoverDesignerView: View {
         let y1 = min(start.y, current.y)
         let w = max(4, abs(current.x - start.x))
         let h = max(4, abs(current.y - start.y))
+        let stroke = defaultStrokeStyle(for: activeFinish)
+        let filled = shapeType != .line && activeFinish == .deboss
         return CoverShapeElementView(
             shapeType: shapeType,
-            strokeStyle: defaultStrokeStyle(for: activeFinish),
+            strokeStyle: stroke,
             strokeWidthPx: max(0.5, 0.8 * scale),
-            dashPx: defaultStrokeStyle(for: activeFinish)
-                .dashPatternMM(strokeWidthMM: 0.8)
-                .map { CGFloat($0 * scale) },
-            isFilled: shapeType != .line && activeFinish == .deboss,
-            color: finishSwatchColor(activeFinish)
+            dashPx: stroke.dashPatternMM(strokeWidthMM: 0.8).map { CGFloat($0 * scale) },
+            isFilled: filled,
+            color: finishSwatchColor(activeFinish),
+            fillColor: filled ? CodableColor.finishDefault(for: activeFinish).color : nil
         )
         .frame(width: w, height: h)
         .opacity(0.55)
@@ -891,16 +858,15 @@ struct CoverDesignerView: View {
         scale: Double
     ) -> some View {
         let strokePx = max(0.5, element.strokeWidthMM * scale)
-        let dashPx = element.strokeStyle
-            .dashPatternMM(strokeWidthMM: element.strokeWidthMM)
-            .map { CGFloat($0 * scale) }
+        let dashPx = element.strokeDashPatternMM().map { CGFloat($0 * scale) }
         return CoverShapeElementView(
             shapeType: element.shapeType,
             strokeStyle: element.strokeStyle,
             strokeWidthPx: strokePx,
             dashPx: dashPx,
             isFilled: element.isFilled,
-            color: elementColor(element.layer)
+            color: elementColor(element.layer),
+            fillColor: element.fill.solidColor?.color
         )
         .frame(width: pixelWidth, height: pixelHeight)
     }
@@ -1129,6 +1095,9 @@ struct CoverDesignerView: View {
             size = (widthMM ?? geometry.boardW * 0.4, 4)
         }
         let stroke = defaultStrokeStyle(for: finish)
+        let fill: CoverPaint = (finish == .deboss && type != .line)
+            ? .solid(.finishDefault(for: finish))
+            : .none
         let new = CoverDesignElement(
             kind: .shape,
             panel: zone,
@@ -1143,7 +1112,7 @@ struct CoverDesignerView: View {
             shapeType: type,
             strokeWidthMM: finish == .deboss ? 1.0 : 0.8,
             strokeStyle: stroke,
-            isFilled: finish == .deboss && type != .line
+            fill: fill
         )
         store.updateSelectedProject { project in
             project.ensureCoverDesignLayers()
@@ -1841,15 +1810,10 @@ struct CoverDesignerView: View {
                     )
                 }
             case .shape:
-                labeledControl("Shape") {
-                    Picker("", selection: elementShapeTypeBinding(element.id)) {
-                        ForEach(CoverShapeType.allCases) { type in
-                            Label(type.title, systemImage: type.systemImage).tag(type)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                }
+                Text(element.shapeType.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("Shape type is set at creation. Use the toolbar to draw a different shape.")
                 labeledControl("Width mm") {
                     CoverInspectorNumberField(
                         value: element.widthMM,
@@ -1872,36 +1836,13 @@ struct CoverDesignerView: View {
                         )
                     }
                 }
-                labeledControl("Border") {
-                    brushStylePicker(
-                        elementID: element.id,
-                        selected: element.strokeStyle,
-                        color: finishSwatchColor(element.layer)
-                    )
-                }
-                labeledControl("Stroke mm") {
-                    CoverInspectorNumberField(
-                        value: element.strokeWidthMM,
-                        fractionDigits: 2,
-                        onCommit: { value in
-                            updateElement(element.id, syncStamp: false) {
-                                $0.strokeWidthMM = min(10, max(0.1, value))
-                            }
-                        },
-                        onEditingChanged: { isInspectorEditing = $0 }
-                    )
-                }
-                if element.shapeType != .line {
-                    labeledControl("Fill") {
-                        Toggle("", isOn: elementFilledBinding(element.id))
-                            .labelsHidden()
-                            .toggleStyle(.checkbox)
-                            .help("Solid panel instead of an outline")
-                    }
-                }
             }
 
             Divider()
+
+            Text("Transform")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
 
             labeledControl("Position") {
                 HStack(spacing: 8) {
@@ -1946,6 +1887,15 @@ struct CoverDesignerView: View {
                 .pickerStyle(.menu)
                 .help("Snaps the element center to this zone. Art can still span across joints.")
             }
+            labeledControl("Rotate") {
+                AngleControl(
+                    degrees: element.rotationDegrees,
+                    onCommit: { value in
+                        updateElement(element.id) { $0.rotationDegrees = value }
+                    },
+                    onEditingChanged: { isInspectorEditing = $0 }
+                )
+            }
             labeledControl("Opacity") {
                 Slider(
                     value: elementOpacityBinding(element.id),
@@ -1956,32 +1906,61 @@ struct CoverDesignerView: View {
                     }
                 }
             }
-            labeledControl("Rotate") {
-                HStack(spacing: 8) {
-                    CoverInspectorNumberField(
-                        value: element.rotationDegrees,
-                        fractionDigits: 0,
-                        width: 56,
-                        onCommit: { value in
-                            updateElement(element.id) { $0.rotationDegrees = value }
+
+            if element.kind == .shape {
+                Divider()
+
+                Text("Appearance")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                labeledControl("Stroke") {
+                    StrokeDashControls(
+                        selected: element.strokeStyle,
+                        strokeColor: finishSwatchColor(element.layer),
+                        dashLengthScale: element.dashLengthScale,
+                        dashGapScale: element.dashGapScale,
+                        strokeWidthMM: element.strokeWidthMM,
+                        onStyleChange: { style in
+                            updateElement(element.id, syncStamp: false) { $0.strokeStyle = style }
+                        },
+                        onDashLengthChange: { value in
+                            updateElement(element.id, syncStamp: false) { $0.dashLengthScale = value }
+                        },
+                        onDashGapChange: { value in
+                            updateElement(element.id, syncStamp: false) { $0.dashGapScale = value }
                         },
                         onEditingChanged: { isInspectorEditing = $0 }
                     )
-                    Button("-90°") { updateElement(element.id) { $0.rotationDegrees = -90 } }
-                        .buttonStyle(.borderless)
-                    Button("0°") { updateElement(element.id) { $0.rotationDegrees = 0 } }
-                        .buttonStyle(.borderless)
+                }
+                labeledControl("Stroke mm") {
+                    CoverInspectorNumberField(
+                        value: element.strokeWidthMM,
+                        fractionDigits: 2,
+                        onCommit: { value in
+                            updateElement(element.id, syncStamp: false) {
+                                $0.strokeWidthMM = min(10, max(0.1, value))
+                            }
+                        },
+                        onEditingChanged: { isInspectorEditing = $0 }
+                    )
+                }
+                if element.shapeType != .line {
+                    labeledControl("Fill") {
+                        FillControls(
+                            fill: element.fill,
+                            defaultSolid: .finishDefault(for: element.layer),
+                            onChange: { paint in
+                                updateElement(element.id, syncStamp: false) { $0.fill = paint }
+                            }
+                        )
+                    }
                 }
             }
 
-            HStack {
-                Button {
-                    duplicateSelected()
-                } label: {
-                    Label("Duplicate", systemImage: "plus.square.on.square")
-                }
-                .help("Duplicate selected element (⌘D)")
+            Divider()
 
+            HStack {
                 Spacer()
 
                 Button(role: .destructive) {
@@ -2035,35 +2014,6 @@ struct CoverDesignerView: View {
             project.hingeGapMM,
             textBlock
         )
-    }
-
-    private func brushStylePicker(elementID: UUID, selected: CoverStrokeStyle, color: Color) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 6)], spacing: 6) {
-            ForEach(CoverStrokeStyle.allCases) { style in
-                Button {
-                    updateElement(elementID, syncStamp: false) { $0.strokeStyle = style }
-                } label: {
-                    VStack(spacing: 4) {
-                        CoverStrokeStylePreview(style: style, color: color)
-                            .frame(height: 14)
-                        Text(style.title)
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(selected == style
-                                  ? Color.accentColor.opacity(0.16)
-                                  : Color(nsColor: .controlBackgroundColor).opacity(0.45))
-                    )
-                }
-                .buttonStyle(.plain)
-                .help(style.help)
-            }
-        }
     }
 
     private var measurementsAutoHelp: String {
@@ -2374,20 +2324,6 @@ struct CoverDesignerView: View {
         )
     }
 
-    private func elementShapeTypeBinding(_ id: UUID) -> Binding<CoverShapeType> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.shapeType ?? .rectangle },
-            set: { value in updateElement(id, syncStamp: false) { $0.shapeType = value } }
-        )
-    }
-
-    private func elementFilledBinding(_ id: UUID) -> Binding<Bool> {
-        Binding(
-            get: { project.coverElements.first { $0.id == id }?.isFilled ?? false },
-            set: { value in updateElement(id, syncStamp: false) { $0.isFilled = value } }
-        )
-    }
-
     private func elementOpacityBinding(_ id: UUID) -> Binding<Double> {
         Binding(
             get: { project.coverElements.first { $0.id == id }?.opacity ?? 1 },
@@ -2419,231 +2355,12 @@ struct CoverDesignerView: View {
     }
 }
 
-/// Local-draft number field — avoids cursor jumps from model updates while typing.
-private struct CoverInspectorNumberField: View {
-    let value: Double
-    var fractionDigits: Int = 1
-    var width: CGFloat = 72
-    let onCommit: (Double) -> Void
-    var onEditingChanged: ((Bool) -> Void)? = nil
-
-    @State private var draft = ""
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        TextField("", text: $draft)
-            .textFieldStyle(.roundedBorder)
-            .foregroundStyle(Color(nsColor: .textColor))
-            .frame(width: width)
-            .focused($isFocused)
-            .onAppear { syncDraft() }
-            .onChange(of: value) { _ in
-                if !isFocused { syncDraft() }
-            }
-            .onChange(of: isFocused) { focused in
-                onEditingChanged?(focused)
-                if !focused { commitDraft() }
-            }
-            .onSubmit { commitDraft() }
-    }
-
-    private func syncDraft() {
-        if fractionDigits == 0 {
-            draft = String(Int(value.rounded()))
-        } else {
-            draft = value.formatted(.number.precision(.fractionLength(fractionDigits)))
-        }
-    }
-
-    private func commitDraft() {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let parsed = Double(trimmed) else {
-            syncDraft()
-            return
-        }
-        let rounded = fractionDigits == 0 ? Double(Int(parsed.rounded())) : parsed
-        if abs(rounded - value) > 0.000_1 {
-            onCommit(rounded)
-        }
-    }
-}
-
-/// Local-draft text field for inspector strings.
-private struct CoverInspectorTextField: View {
-    let value: String
-    var placeholder: String = ""
-    var isBold: Bool = false
-    let onCommit: (String) -> Void
-    var onEditingChanged: ((Bool) -> Void)? = nil
-
-    @State private var draft = ""
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        TextField(placeholder, text: $draft)
-            .textFieldStyle(.roundedBorder)
-            .foregroundStyle(Color(nsColor: .textColor))
-            .fontWeight(isBold ? .semibold : .regular)
-            .focused($isFocused)
-            .onAppear { syncDraft() }
-            .onChange(of: value) { _ in
-                if !isFocused { syncDraft() }
-            }
-            .onChange(of: isFocused) { focused in
-                onEditingChanged?(focused)
-                if !focused { commitDraft() }
-            }
-            .onSubmit { commitDraft() }
-    }
-
-    private func syncDraft() {
-        draft = value
-    }
-
-    private func commitDraft() {
-        if draft != value {
-            onCommit(draft)
-        }
-    }
-}
-
 private struct CoverFocusRingDisabled: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 14.0, *) {
             content.focusEffectDisabled()
         } else {
             content
-        }
-    }
-}
-
-/// Mini swatch for border-brush pickers.
-private struct CoverStrokeStylePreview: View {
-    let style: CoverStrokeStyle
-    let color: Color
-
-    var body: some View {
-        GeometryReader { proxy in
-            let rect = CGRect(x: 4, y: proxy.size.height / 2, width: max(8, proxy.size.width - 8), height: 0)
-            ZStack {
-                if style.isDoubleStroke {
-                    Path { path in
-                        path.move(to: CGPoint(x: rect.minX, y: rect.minY - 2))
-                        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY - 2))
-                    }
-                    .stroke(color, lineWidth: 1)
-                    Path { path in
-                        path.move(to: CGPoint(x: rect.minX, y: rect.minY + 2))
-                        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + 2))
-                    }
-                    .stroke(color, lineWidth: 1)
-                } else {
-                    Path { path in
-                        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-                        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-                    }
-                    .stroke(
-                        color,
-                        style: StrokeStyle(
-                            lineWidth: 1.5,
-                            lineCap: style.usesRoundCap ? .round : .butt,
-                            dash: style.dashPatternMM(strokeWidthMM: 0.8).map { CGFloat($0 * 2) }
-                        )
-                    )
-                    if style.drawsOrnamentMarks {
-                        ForEach(ornamentMarkPositions(width: rect.width), id: \.self) { x in
-                            Circle()
-                                .fill(color)
-                                .frame(width: 3, height: 3)
-                                .position(x: rect.minX + x, y: rect.minY)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func ornamentMarkPositions(width: CGFloat) -> [CGFloat] {
-        stride(from: CGFloat(10), through: max(10, width - 4), by: 14).map { $0 }
-    }
-}
-
-/// Renders a shape element with its border brush (dash pattern / double rule).
-private struct CoverShapeElementView: View {
-    let shapeType: CoverShapeType
-    let strokeStyle: CoverStrokeStyle
-    let strokeWidthPx: CGFloat
-    let dashPx: [CGFloat]
-    let isFilled: Bool
-    let color: Color
-
-    var body: some View {
-        GeometryReader { proxy in
-            let rect = CGRect(origin: .zero, size: proxy.size)
-                .insetBy(dx: strokeWidthPx / 2, dy: strokeWidthPx / 2)
-            let path = Self.path(shapeType, in: rect)
-            ZStack {
-                if isFilled, shapeType != .line {
-                    path.fill(color.opacity(0.9))
-                }
-                path.stroke(
-                    color,
-                    style: StrokeStyle(
-                        lineWidth: strokeWidthPx,
-                        lineCap: strokeStyle.usesRoundCap ? .round : .butt,
-                        dash: dashPx
-                    )
-                )
-                if strokeStyle.isDoubleStroke {
-                    innerPath(in: rect)
-                        .stroke(color, style: StrokeStyle(lineWidth: strokeWidthPx))
-                }
-                if strokeStyle.drawsOrnamentMarks {
-                    ornamentMarks(along: path, in: rect)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func ornamentMarks(along path: Path, in rect: CGRect) -> some View {
-        let spacing = max(6, strokeWidthPx * 8)
-        let count = max(2, Int(rect.width / spacing))
-        ForEach(0..<count, id: \.self) { index in
-            let t = CGFloat(index + 1) / CGFloat(count + 1)
-            let x = rect.minX + rect.width * t
-            let y = rect.midY
-            Circle()
-                .fill(color)
-                .frame(width: strokeWidthPx * 1.2, height: strokeWidthPx * 1.2)
-                .position(x: x, y: y)
-        }
-    }
-
-    private func innerPath(in rect: CGRect) -> Path {
-        let inset = strokeWidthPx * 2.5
-        switch shapeType {
-        case .rectangle, .ellipse:
-            return Self.path(shapeType, in: rect.insetBy(dx: inset, dy: inset))
-        case .line:
-            var path = Path()
-            path.move(to: CGPoint(x: rect.minX, y: rect.midY + inset))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY + inset))
-            return path
-        }
-    }
-
-    static func path(_ type: CoverShapeType, in rect: CGRect) -> Path {
-        switch type {
-        case .rectangle:
-            return Path(rect)
-        case .ellipse:
-            return Path(ellipseIn: rect)
-        case .line:
-            var path = Path()
-            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-            return path
         }
     }
 }

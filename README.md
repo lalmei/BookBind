@@ -23,6 +23,8 @@ Native macOS app for hobby binders and small presses. Assemble a full book from 
 | **Cover** | SVG cover & spine editor — boards, grooves, foil / deboss stamps |
 | **Materials** | Inventory notes for that book |
 
+Imposition’s **Endpapers** section opens a dedicated endpaper designer (solid color, artwork, or seedable procedural marbling).
+
 **New Masterwork** unlocks all three tools. Quick Actions create a saved scratch project (e.g. `Signature A1B2`) with only the started tool available — the others stay grayed out until you click one and confirm creating that section. Calculators stay global for one-off measurements.
 
 ## Project workflow
@@ -52,7 +54,6 @@ Flow becomes: **assemble book block → decorate → impose → export**.
 
 ### Binding quality (also planned)
 
-- Decorative endpapers polish (solid color swatches, multi-page PDF cycling UI)
 - Job / project persistence across launches
 
 ### Later
@@ -68,6 +69,8 @@ Flow becomes: **assemble book block → decorate → impose → export**.
 - Orientation normalize for mixed landscape/portrait
 - Bleed margin + custom trim sizes + crop marks
 - Decorative endpapers from image or PDF
+- Procedural marbled endpapers (seedable styles: Stone, Nonpareil, Peacock, Combed)
+- Cover editor: illustration-style stroke dash/gap, fill paint, shape tools, duplicate in toolbar
 - Vector-preferring impose (`CGPDFPage`, raster fallback)
 - Imposition summary panel (pages, signatures, sheet size, print sheets)
 

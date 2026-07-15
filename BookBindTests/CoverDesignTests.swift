@@ -331,7 +331,7 @@ final class CoverDesignTests: XCTestCase {
                 shapeType: .rectangle,
                 strokeWidthMM: 1.2,
                 strokeStyle: .ornament,
-                isFilled: true
+                fill: .solid(.debossGray)
             )
         ]
 
@@ -345,13 +345,49 @@ final class CoverDesignTests: XCTestCase {
         XCTAssertEqual(shape.layer, .deboss)
         XCTAssertEqual(shape.strokeStyle, .ornament)
         XCTAssertTrue(shape.isFilled)
+        XCTAssertEqual(shape.fill.solidColor, .debossGray)
     }
 
-    func testChainStrokeDashPattern() {
-        let pattern = CoverStrokeStyle.chain.dashPatternMM(strokeWidthMM: 1)
-        XCTAssertEqual(pattern.count, 4)
-        XCTAssertTrue(CoverStrokeStyle.chain.usesRoundCap)
+    func testLegacyIsFilledAndChainStrokeDecode() throws {
+        let json = """
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "kind": "shape",
+          "panel": "front",
+          "text": "",
+          "xMM": 10,
+          "yMM": 10,
+          "widthMM": 40,
+          "heightMM": 20,
+          "fontSizeMM": 4,
+          "rotationDegrees": 0,
+          "layer": "ink",
+          "fontStyle": "body",
+          "designLayerID": "00000000-0000-0000-0000-000000000002",
+          "strokeStyle": "chain",
+          "isFilled": true
+        }
+        """.data(using: .utf8)!
+        let element = try JSONDecoder().decode(CoverDesignElement.self, from: json)
+        XCTAssertEqual(element.strokeStyle, .dashDot)
+        XCTAssertTrue(element.isFilled)
+        XCTAssertEqual(element.dashLengthScale, 1)
+        XCTAssertEqual(element.dashGapScale, 1)
+    }
+
+    func testDashDotStrokePatternAndScales() {
+        let base = CoverStrokeStyle.dashDot.dashPatternMM(strokeWidthMM: 1)
+        XCTAssertEqual(base.count, 4)
+        let stretched = CoverStrokeStyle.dashDot.dashPatternMM(
+            strokeWidthMM: 1,
+            lengthScale: 2,
+            gapScale: 0.5
+        )
+        XCTAssertEqual(stretched[0], base[0] * 2, accuracy: 0.0001)
+        XCTAssertEqual(stretched[1], base[1] * 0.5, accuracy: 0.0001)
+        XCTAssertTrue(CoverStrokeStyle.dashDot.usesRoundCap)
         XCTAssertTrue(CoverStrokeStyle.ornament.drawsOrnamentMarks)
+        XCTAssertTrue(CoverStrokeStyle.dashDotDot.allowsDashScaling)
     }
 
     func testSVGExportGroupsElementsByFinishChannel() throws {
@@ -372,7 +408,7 @@ final class CoverDesignTests: XCTestCase {
                 layer: .deboss,
                 designLayerID: layerID,
                 shapeType: .rectangle,
-                strokeStyle: .chain
+                strokeStyle: .dashDot
             )
         )
 
