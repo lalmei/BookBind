@@ -39,9 +39,7 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 40) {
-                header
-
+            VStack(alignment: .leading, spacing: 28) {
                 if store.projects.isEmpty {
                     emptyState
                 } else {
@@ -49,17 +47,12 @@ struct HomeView: View {
                 }
             }
             .padding(.horizontal, ArtisanTheme.marginDesktop)
-            .padding(.vertical, 44)
+            .padding(.vertical, 32)
             .frame(maxWidth: 1500, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(ArtisanTheme.surfaceBright)
-    }
-
-    private var header: some View {
-        Text("BookBind")
-            .font(ArtisanTheme.displayFont)
-            .foregroundStyle(ArtisanTheme.primary)
+        .navigationTitle("")
     }
 
     private var emptyState: some View {
