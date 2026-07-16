@@ -384,7 +384,7 @@ enum PDFDocumentService {
             artwork: backEndpaperArtwork
         )
 
-        appendEndpaperPages(to: output, count: max(0, frontEndpapers), size: size, face: frontFace)
+        appendEndpaperPages(to: output, count: max(0, frontEndpapers), size: size, face: frontFace, isFront: true)
 
         for pageIndex in 0..<content.pageCount {
             guard let page = content.page(at: pageIndex) else { continue }
@@ -396,7 +396,7 @@ enum PDFDocumentService {
             appendPDFData(fitPageData(pageToPlace, to: size), to: output)
         }
 
-        appendEndpaperPages(to: output, count: max(0, backEndpapers), size: size, face: backFace)
+        appendEndpaperPages(to: output, count: max(0, backEndpapers), size: size, face: backFace, isFront: false)
 
         for _ in 0..<max(0, padPages) {
             appendBlankPage(to: output, size: size)
@@ -405,93 +405,47 @@ enum PDFDocumentService {
         return output
     }
 
-    /// Append blank or decorative endpaper pages.
+    /// Append decorative endpaper leaves sampled from a flat folded endsheet.
+    /// Leaf 0 / 1 map to pastedown and flyleaf halves (order depends on front vs back).
     static func appendEndpaperPages(
         to document: PDFDocument,
         count: Int,
         size: CGSize,
-        face: EndpaperFaceDesign
+        face: EndpaperFaceDesign,
+        isFront: Bool = true
     ) {
         guard count > 0 else { return }
 
-        switch face.mode {
-        case .marbled:
-            if let spec = face.marbling,
-               let image = MarbledPaperGenerator.nsImage(spec: spec, sizePoints: size, dpi: 300) {
-                let data = fitImageData(image, to: size)
-                for _ in 0..<count {
-                    appendPDFData(data, to: document)
-                }
-                return
-            }
-            // Fall through if marbling failed to render.
-            fallthrough
-        case .blank:
-            for _ in 0..<count {
-                appendBlankPage(to: document, size: size)
-            }
-            return
-        case .solidColor:
-            for _ in 0..<count {
-                if face.solidColor == .none {
-                    appendBlankPage(to: document, size: size)
-                } else {
-                    appendPDFData(
-                        renderColorPDF(bounds: CGRect(origin: .zero, size: size), color: face.solidColor.cgColor),
-                        to: document
-                    )
-                }
-            }
-            return
-        case .artwork:
-            break
-        }
+        let sheetSize = CGSize(width: size.width * 2, height: size.height)
 
-        guard let artwork = face.artwork else {
-            for _ in 0..<count {
-                if face.solidColor == .none {
-                    appendBlankPage(to: document, size: size)
-                } else {
-                    appendPDFData(
-                        renderColorPDF(bounds: CGRect(origin: .zero, size: size), color: face.solidColor.cgColor),
-                        to: document
-                    )
-                }
-            }
-            return
-        }
-
-        let url = artwork.resolvedURL()
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessing { url.stopAccessingSecurityScopedResource() }
-        }
-
-        if artwork.isPDF {
-            guard let pdf = PDFDocument(url: url), pdf.pageCount > 0 else {
-                for _ in 0..<count {
-                    appendBlankPage(to: document, size: size)
-                }
-                return
-            }
-            for index in 0..<count {
-                guard let page = pdf.page(at: index % pdf.pageCount) else {
-                    appendBlankPage(to: document, size: size)
-                    continue
-                }
-                appendPDFData(fitPageData(page, to: size), to: document)
-            }
-            return
-        }
-
-        guard let image = NSImage(contentsOf: url) else {
+        // Uniform blank / solid: no need for a continuous sheet pattern.
+        if face.mode == .blank || (face.mode == .solidColor && face.solidColor == .none) {
             for _ in 0..<count {
                 appendBlankPage(to: document, size: size)
             }
             return
         }
-        let data = fitImageData(image, to: size)
-        for _ in 0..<count {
+        if face.mode == .solidColor {
+            let data = renderColorPDF(
+                bounds: CGRect(origin: .zero, size: size),
+                color: face.solidColor.cgColor
+            )
+            for _ in 0..<count {
+                appendPDFData(data, to: document)
+            }
+            return
+        }
+
+        guard let sheet = EndsheetRenderService.nsImage(face: face, sheetSizePoints: sheetSize, dpi: 300) else {
+            for _ in 0..<count {
+                appendBlankPage(to: document, size: size)
+            }
+            return
+        }
+
+        for leafIndex in 0..<count {
+            let half = EndsheetZone.halfIndex(leafIndex: leafIndex, isFront: isFront)
+            let data = EndsheetRenderService.leafPDFData(fromSheet: sheet, leafSize: size, halfIndex: half)
             appendPDFData(data, to: document)
         }
     }
@@ -621,7 +575,7 @@ enum PDFDocumentService {
         return copy
     }
 
-    private static func renderBlankPDF(bounds: CGRect) -> Data {
+    static func renderBlankPDF(bounds: CGRect) -> Data {
         renderColorPDF(bounds: bounds, color: CGColor(gray: 1, alpha: 1))
     }
 

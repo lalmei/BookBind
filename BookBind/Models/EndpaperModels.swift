@@ -1,4 +1,106 @@
+import CoreGraphics
 import Foundation
+
+/// Role of one leaf on a folded endsheet (pastedown glued to the board, flyleaf free).
+enum EndsheetZone: String, CaseIterable, Identifiable, Codable, Hashable {
+    case pastedown
+    case flyleaf
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .pastedown: return "Pastedown"
+        case .flyleaf: return "Flyleaf"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .pastedown: return "Glued to the inside of the cover board"
+        case .flyleaf: return "Free leaf facing the text block"
+        }
+    }
+
+    /// Zone for leaf index `i` within a face (cycles for odd leaf counts).
+    static func zone(leafIndex: Int, isFront: Bool) -> EndsheetZone {
+        let pairing = ((leafIndex % 2) + 2) % 2
+        if isFront {
+            return pairing == 0 ? .pastedown : .flyleaf
+        }
+        return pairing == 0 ? .flyleaf : .pastedown
+    }
+
+    /// Left (0) or right (1) half of the flat sheet for this leaf.
+    static func halfIndex(leafIndex: Int, isFront: Bool) -> Int {
+        // Front: pastedown left, flyleaf right. Back: flyleaf left, pastedown right.
+        // That still maps leafIndex % 2 → 0 left, 1 right on both faces.
+        ((leafIndex % 2) + 2) % 2
+    }
+}
+
+/// Flat folded endsheet geometry in millimeters (two leaves side by side).
+struct EndsheetGeometry: Equatable {
+    let leafW: Double
+    let leafH: Double
+
+    var totalW: Double { leafW * 2 }
+    var foldXMM: Double { leafW }
+
+    init(leafWidthMM: Double, leafHeightMM: Double) {
+        leafW = max(20, leafWidthMM)
+        leafH = max(20, leafHeightMM)
+    }
+
+    init(project: BinderyProject) {
+        self.init(leafWidthMM: project.widthMM, leafHeightMM: project.heightMM)
+    }
+
+    init(trimPoints: CGSize) {
+        self.init(
+            leafWidthMM: BindingMath.millimeters(fromPoints: trimPoints.width),
+            leafHeightMM: BindingMath.millimeters(fromPoints: trimPoints.height)
+        )
+    }
+
+    /// Preferred geometry: imposition trim when known, else project board trim.
+    static func resolving(project: BinderyProject, trimPoints: CGSize?) -> EndsheetGeometry {
+        if let trimPoints, trimPoints.width > 1, trimPoints.height > 1 {
+            return EndsheetGeometry(trimPoints: trimPoints)
+        }
+        return EndsheetGeometry(project: project)
+    }
+
+    func zoneOriginX(_ zone: EndsheetZone, isFront: Bool) -> Double {
+        switch (isFront, zone) {
+        case (true, .pastedown), (false, .flyleaf):
+            return 0
+        case (true, .flyleaf), (false, .pastedown):
+            return leafW
+        }
+    }
+
+    func zone(forHalfIndex half: Int, isFront: Bool) -> EndsheetZone {
+        let left: EndsheetZone = isFront ? .pastedown : .flyleaf
+        let right: EndsheetZone = isFront ? .flyleaf : .pastedown
+        return half == 0 ? left : right
+    }
+
+    /// Leaf size in PDF points (for book-block cropping).
+    var leafSizePoints: CGSize {
+        CGSize(
+            width: BindingMath.points(fromMillimeters: leafW),
+            height: BindingMath.points(fromMillimeters: leafH)
+        )
+    }
+
+    var sheetSizePoints: CGSize {
+        CGSize(
+            width: BindingMath.points(fromMillimeters: totalW),
+            height: BindingMath.points(fromMillimeters: leafH)
+        )
+    }
+}
 
 enum EndpaperMode: String, CaseIterable, Identifiable, Codable, Hashable {
     case blank
@@ -208,22 +310,50 @@ struct MarbledPaperPalette: Identifiable, Hashable {
     ]
 }
 
+/// Design for one endsheet face (front or back). Fill modes apply across the
+/// full flat sheet (2× leaf width); book-block pages sample pastedown/flyleaf halves.
 struct EndpaperFaceDesign: Equatable, Codable {
     var mode: EndpaperMode
     var solidColor: EndpaperColor
     var artwork: EndpaperArtwork?
     var marbling: MarbledPaperSpec?
+    /// When true, fold guides are shown on the endsheet artboard (print marks, not barriers).
+    var showFoldGuides: Bool
 
     init(
         mode: EndpaperMode = .blank,
         solidColor: EndpaperColor = .none,
         artwork: EndpaperArtwork? = nil,
-        marbling: MarbledPaperSpec? = nil
+        marbling: MarbledPaperSpec? = nil,
+        showFoldGuides: Bool = true
     ) {
         self.mode = mode
         self.solidColor = solidColor
         self.artwork = artwork
         self.marbling = marbling
+        self.showFoldGuides = showFoldGuides
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(EndpaperMode.self, forKey: .mode) ?? .blank
+        solidColor = try container.decodeIfPresent(EndpaperColor.self, forKey: .solidColor) ?? .none
+        artwork = try container.decodeIfPresent(EndpaperArtwork.self, forKey: .artwork)
+        marbling = try container.decodeIfPresent(MarbledPaperSpec.self, forKey: .marbling)
+        showFoldGuides = try container.decodeIfPresent(Bool.self, forKey: .showFoldGuides) ?? true
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(solidColor, forKey: .solidColor)
+        try container.encodeIfPresent(artwork, forKey: .artwork)
+        try container.encodeIfPresent(marbling, forKey: .marbling)
+        try container.encode(showFoldGuides, forKey: .showFoldGuides)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, solidColor, artwork, marbling, showFoldGuides
     }
 
     mutating func ensureMarbling() {

@@ -21,17 +21,18 @@ Native macOS app for hobby binders and small presses. Assemble a full book from 
 |---|---|
 | **Imposition** | Sources, signatures, creep, bind, export |
 | **Cover** | SVG cover & spine editor — boards, grooves, foil / deboss stamps |
+| **Endpapers** | Folded endsheet artboard — pastedown, flyleaf, flat-sheet export |
 | **Materials** | Inventory notes for that book |
 
-Imposition’s **Endpapers** section opens a dedicated endpaper designer (solid color, artwork, or seedable procedural marbling).
+Imposition’s **Endpapers** section links to the **Endpapers** tool (folded endsheet artboard — solid, artwork, or procedural marbling).
 
-**New Masterwork** unlocks all three tools. Quick Actions create a saved scratch project (e.g. `Signature A1B2`) with only the started tool available — the others stay grayed out until you click one and confirm creating that section. Calculators stay global for one-off measurements.
+**New Masterwork** unlocks all workbench tools. Quick Actions create a saved scratch project (e.g. `Signature A1B2`) with only the started tool available — the others stay grayed out until you click one and confirm creating that section. Calculators stay global for one-off measurements.
 
 ## Project workflow
 
 1. **New Masterwork** with title / trim / architecture — or a **Quick Action** for a single tool
 2. In **Imposition** — drop PDFs, configure, **Bind**, **Export PDF** (when that tool is unlocked)
-3. On a full masterwork, switch to **Cover** / **Materials**; Quick Action projects stay scoped to their tool
+3. On a full masterwork, switch to **Cover** / **Endpapers** / **Materials**; Quick Action projects stay scoped to their tool
 4. Use **Calculators** anytime for one-off measurements
 5. Use **Libraries** to keep reusable PDFs, scans, and artwork linked outside a single masterwork
 6. Rename the scratch project anytime from the sidebar
@@ -63,7 +64,8 @@ Flow becomes: **assemble book block → decorate → impose → export**.
 
 ### Done recently
 
-- App shell: global nav vs project workbench (Imposition / Cover / Materials)
+- Folded endsheet Endpapers tool (pastedown/flyleaf artboard + flat-sheet export)
+- App shell: global nav vs project workbench (Imposition / Cover / Endpapers / Materials)
 - Standalone Calculators (spine, GSM, creep)
 - Creep compensation for thick signatures
 - Orientation normalize for mixed landscape/portrait

@@ -295,6 +295,7 @@ final class BindingWorkspace: ObservableObject {
     func restore(_ state: BindingWorkspaceState) {
         sources = state.sources
         job = state.job
+        job.normalizeEndpaperLeafCounts()
         bookBlockItems = state.bookBlockItems.isEmpty
             ? state.sources.map(BookBlockItem.sourceRange(source:))
             : state.bookBlockItems

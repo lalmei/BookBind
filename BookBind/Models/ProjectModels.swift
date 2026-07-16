@@ -750,6 +750,9 @@ struct BinderyProject: Identifiable, Equatable, Codable {
     /// Placed cover/spine artwork (text / images). Empty until seeded in the designer.
     var coverElements: [CoverDesignElement]
 
+    /// Folded endsheet designs (front/back). Synced with `BindingJob.endpapers` for bind.
+    var endsheets: EndpaperDesign
+
     var materials: [MaterialEntry]
 
     /// Optional paper GSM for spine estimates when no impose plan exists yet.
@@ -757,7 +760,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
     var estimatedPageCount: Int
 
     /// Workbench tools unlocked for this project.
-    /// Full masterworks enable all three; Quick Actions enable only the started tool.
+    /// Full masterworks enable all tools; Quick Actions enable only the started tool.
     var enabledTools: Set<ProjectTool>
 
     init(
@@ -779,6 +782,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         coverDesignLayers: [CoverDesignLayer] = [],
         activeCoverLayerID: UUID? = nil,
         coverElements: [CoverDesignElement] = [],
+        endsheets: EndpaperDesign = EndpaperDesign(),
         materials: [MaterialEntry] = [],
         textPaperGSM: Double = 80,
         estimatedPageCount: Int = 0,
@@ -802,6 +806,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         self.coverDesignLayers = coverDesignLayers
         self.activeCoverLayerID = activeCoverLayerID
         self.coverElements = coverElements
+        self.endsheets = endsheets
         self.materials = materials
         self.textPaperGSM = textPaperGSM
         self.estimatedPageCount = estimatedPageCount
@@ -828,6 +833,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         coverDesignLayers = try container.decodeIfPresent([CoverDesignLayer].self, forKey: .coverDesignLayers) ?? []
         activeCoverLayerID = try container.decodeIfPresent(UUID.self, forKey: .activeCoverLayerID)
         coverElements = try container.decodeIfPresent([CoverDesignElement].self, forKey: .coverElements) ?? []
+        endsheets = try container.decodeIfPresent(EndpaperDesign.self, forKey: .endsheets) ?? EndpaperDesign()
         materials = try container.decode([MaterialEntry].self, forKey: .materials)
         textPaperGSM = try container.decode(Double.self, forKey: .textPaperGSM)
         estimatedPageCount = try container.decode(Int.self, forKey: .estimatedPageCount)
@@ -858,6 +864,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         try container.encode(coverDesignLayers, forKey: .coverDesignLayers)
         try container.encodeIfPresent(activeCoverLayerID, forKey: .activeCoverLayerID)
         try container.encode(coverElements, forKey: .coverElements)
+        try container.encode(endsheets, forKey: .endsheets)
         try container.encode(materials, forKey: .materials)
         try container.encode(textPaperGSM, forKey: .textPaperGSM)
         try container.encode(estimatedPageCount, forKey: .estimatedPageCount)
@@ -870,7 +877,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         case createdAt, updatedAt
         case boardThicknessMM, hingeGapMM, spineWidthOverrideMM, coverMaterial
         case showFoilLayer, showDebossLayer, folioStampText
-        case coverDesignLayers, activeCoverLayerID, coverElements
+        case coverDesignLayers, activeCoverLayerID, coverElements, endsheets
         case materials, textPaperGSM, estimatedPageCount, enabledTools
     }
 
@@ -1116,6 +1123,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
 enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
     case imposition
     case cover
+    case endpapers
     case materials
 
     var id: String { rawValue }
@@ -1124,6 +1132,7 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
         switch self {
         case .imposition: return "Imposition"
         case .cover: return "Cover"
+        case .endpapers: return "Endpapers"
         case .materials: return "Materials"
         }
     }
@@ -1132,6 +1141,7 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
         switch self {
         case .imposition: return "rectangle.split.2x1"
         case .cover: return "book.closed"
+        case .endpapers: return "doc.on.doc"
         case .materials: return "list.bullet.clipboard"
         }
     }
@@ -1142,6 +1152,8 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
             return "Signature folding, creep, and print sheet mapping."
         case .cover:
             return "SVG cover & spine editor — boards, grooves, foil and deboss."
+        case .endpapers:
+            return "Folded endsheet artboard — pastedown, flyleaf, and flat-sheet export."
         case .materials:
             return "Inventory tied to this project’s requirements."
         }
@@ -1152,6 +1164,7 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
         switch self {
         case .imposition: return "signature layout"
         case .cover: return "cover"
+        case .endpapers: return "endpapers"
         case .materials: return "materials"
         }
     }

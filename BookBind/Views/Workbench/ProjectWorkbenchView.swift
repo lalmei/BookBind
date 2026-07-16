@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Project-scoped workbench: imposition, cover, and materials — not global nav items.
+/// Project-scoped workbench: imposition, cover, endpapers, and materials — not global nav items.
 struct ProjectWorkbenchView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.colorScheme) private var colorScheme
@@ -12,6 +12,8 @@ struct ProjectWorkbenchView: View {
     @State private var titleDraft = ""
     @FocusState private var isTitleFieldFocused: Bool
     @StateObject private var coverChrome = CoverEditorChrome()
+    @StateObject private var endsheetChrome = CoverEditorChrome()
+    @State private var endsheetEditingFront = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +49,9 @@ struct ProjectWorkbenchView: View {
         .onChange(of: project.id) { _ in
             coverChrome.viewMode = .fit
             coverChrome.zoomFactor = 1.0
+            endsheetChrome.viewMode = .fit
+            endsheetChrome.zoomFactor = 1.0
+            endsheetEditingFront = true
         }
     }
 
@@ -67,6 +72,13 @@ struct ProjectWorkbenchView: View {
                     project: project,
                     workspace: workspace,
                     chrome: coverChrome
+                )
+            } else if store.projectTool == .endpapers {
+                EndsheetWorkbenchHeaderControls(
+                    project: project,
+                    workspace: workspace,
+                    chrome: endsheetChrome,
+                    isFront: $endsheetEditingFront
                 )
             }
         }
@@ -208,6 +220,13 @@ struct ProjectWorkbenchView: View {
                 workspace: workspace,
                 chrome: coverChrome
             )
+        case .endpapers:
+            EndsheetDesignerView(
+                project: project,
+                workspace: workspace,
+                chrome: endsheetChrome,
+                editingFront: $endsheetEditingFront
+            )
         case .materials:
             MaterialsLogView(project: project)
         }
@@ -253,6 +272,68 @@ private struct CoverWorkbenchHeaderControls: View {
 
             Button("Export PDF…") {
                 CoverExportService.exportBlueprintPDF(project: project, workspace: workspace, store: store)
+            }
+            .buttonStyle(.bordered)
+        }
+        .tint(Color(nsColor: .labelColor))
+    }
+}
+
+private struct EndsheetWorkbenchHeaderControls: View {
+    @EnvironmentObject private var store: AppStore
+    let project: BinderyProject
+    @ObservedObject var workspace: BindingWorkspace
+    @ObservedObject var chrome: CoverEditorChrome
+    @Binding var isFront: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Picker("Scale", selection: $chrome.viewMode) {
+                ForEach(CoverEditorChrome.ViewMode.allCases) { mode in
+                    Text(mode.shortLabel).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 100)
+            .labelsHidden()
+
+            Button {
+                chrome.zoomFactor = 1.0
+            } label: {
+                Text(String(format: "%.0f%%", chrome.zoomFactor * 100))
+                    .font(ArtisanTheme.technicalCaption)
+                    .monospacedDigit()
+            }
+            .buttonStyle(.borderless)
+            .help("Reset pinch zoom")
+
+            Menu("Export") {
+                Button("SVG…") {
+                    EndsheetExportService.exportSVG(
+                        project: project,
+                        workspace: workspace,
+                        store: store,
+                        isFront: isFront
+                    )
+                }
+                Button("Blueprint PDF…") {
+                    EndsheetExportService.exportBlueprintPDF(
+                        project: project,
+                        workspace: workspace,
+                        store: store,
+                        isFront: isFront
+                    )
+                }
+            }
+            .menuStyle(.borderlessButton)
+
+            Button("Export PDF…") {
+                EndsheetExportService.exportBlueprintPDF(
+                    project: project,
+                    workspace: workspace,
+                    store: store,
+                    isFront: isFront
+                )
             }
             .buttonStyle(.bordered)
         }

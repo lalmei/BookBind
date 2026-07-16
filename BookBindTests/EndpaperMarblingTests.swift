@@ -90,6 +90,34 @@ final class EndpaperMarblingTests: XCTestCase {
         XCTAssertNotEqual(small!.width, large!.width)
     }
 
+    func testEndsheetCountKeepsEvenLeafPairs() {
+        var job = BindingJob()
+        job.frontEndpapers = 3
+        job.normalizeEndpaperLeafCounts()
+        XCTAssertEqual(job.frontEndpapers, 2)
+        XCTAssertEqual(job.frontEndsheets, 1)
+
+        job.frontEndsheets = 2
+        XCTAssertEqual(job.frontEndpapers, 4)
+
+        job.backEndsheets = 0
+        XCTAssertEqual(job.backEndpapers, 0)
+    }
+
+    func testOddLeafCountNormalizedOnDecode() throws {
+        let json = """
+        {
+          "bindingStyle": "Section-sewn",
+          "signatureSize": 16,
+          "frontEndpapers": 3,
+          "backEndpapers": 1
+        }
+        """.data(using: .utf8)!
+        let job = try JSONDecoder().decode(BindingJob.self, from: json)
+        XCTAssertEqual(job.frontEndpapers, 2)
+        XCTAssertEqual(job.backEndpapers, 0)
+    }
+
     private func pixelChecksum(_ image: CGImage) -> UInt64 {
         guard let data = image.dataProvider?.data else { return 0 }
         let length = CFDataGetLength(data)
