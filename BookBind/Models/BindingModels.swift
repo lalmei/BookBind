@@ -197,6 +197,36 @@ struct BindingJob: Equatable, Codable {
     var backEndpapers = 2
     /// Front / back decorative design (blank, solid, artwork, or procedural marbling).
     var endpapers = EndpaperDesign()
+
+    /// Max folded endsheets per side (each sheet = 2 leaves).
+    static let maxEndsheetsPerSide = 8
+
+    /// Folded endsheet count for the front (derived from leaf count; always even leaves).
+    var frontEndsheets: Int {
+        get { Self.endsheetCount(fromLeaves: frontEndpapers) }
+        set { frontEndpapers = Self.leafCount(fromEndsheets: newValue) }
+    }
+
+    /// Folded endsheet count for the back (derived from leaf count; always even leaves).
+    var backEndsheets: Int {
+        get { Self.endsheetCount(fromLeaves: backEndpapers) }
+        set { backEndpapers = Self.leafCount(fromEndsheets: newValue) }
+    }
+
+    /// Snap leaf counts to even pairs (one endsheet = pastedown + flyleaf).
+    mutating func normalizeEndpaperLeafCounts() {
+        frontEndpapers = Self.leafCount(fromEndsheets: Self.endsheetCount(fromLeaves: frontEndpapers))
+        backEndpapers = Self.leafCount(fromEndsheets: Self.endsheetCount(fromLeaves: backEndpapers))
+    }
+
+    static func endsheetCount(fromLeaves leaves: Int) -> Int {
+        let even = max(0, leaves) / 2 * 2
+        return min(maxEndsheetsPerSide, even / 2)
+    }
+
+    static func leafCount(fromEndsheets sheets: Int) -> Int {
+        min(maxEndsheetsPerSide, max(0, sheets)) * 2
+    }
     var pageNumbers = PageNumberOptions()
     var watermark = WatermarkOptions()
     var addCropMarks = false
@@ -314,6 +344,7 @@ struct BindingJob: Equatable, Codable {
         signatureSize = try container.decodeIfPresent(SignatureSize.self, forKey: .signatureSize) ?? .sextodecimo
         frontEndpapers = try container.decodeIfPresent(Int.self, forKey: .frontEndpapers) ?? 2
         backEndpapers = try container.decodeIfPresent(Int.self, forKey: .backEndpapers) ?? 2
+        normalizeEndpaperLeafCounts()
         if let design = try container.decodeIfPresent(EndpaperDesign.self, forKey: .endpapers) {
             endpapers = design
         } else {

@@ -66,6 +66,16 @@ final class AppStore: ObservableObject {
         workspace.onChange = { [weak self] in
             self?.save()
         }
+        // Prefer project endsheet designs; otherwise lift designs from the job into the project.
+        if let index = projects.firstIndex(where: { $0.id == projectID }) {
+            let projectSheets = projects[index].endsheets
+            let jobSheets = workspace.job.endpapers
+            if projectSheets != EndpaperDesign() {
+                workspace.job.endpapers = projectSheets
+            } else if jobSheets != EndpaperDesign() {
+                projects[index].endsheets = jobSheets
+            }
+        }
         workspaces[projectID] = workspace
         return workspace
     }
@@ -112,6 +122,11 @@ final class AppStore: ObservableObject {
                         widthPoints: pageSize.width,
                         heightPoints: pageSize.height
                     )
+                }
+            case .endpapers:
+                workspace.job.endpapers = project.endsheets
+                if workspace.job.resolvedTrimSize == nil {
+                    workspace.job.applyProjectTrim(widthMM: project.widthMM, heightMM: project.heightMM)
                 }
             case .materials:
                 break
@@ -197,6 +212,7 @@ final class AppStore: ObservableObject {
         workspace.job.showGuideMarks = defaults.bool(forKey: "preferGuideMarks")
         workspace.job.applyProjectTrim(widthMM: project.widthMM, heightMM: project.heightMM)
         workspace.job.applyArchitecture(project.architecture)
+        workspace.job.endpapers = project.endsheets
         workspace.onChange?()
         showNewMasterwork = false
         save()
@@ -247,6 +263,7 @@ final class AppStore: ObservableObject {
         switch tool {
         case .imposition: return "Signature \(token)"
         case .cover: return "Cover \(token)"
+        case .endpapers: return "Endpapers \(token)"
         case .materials: return "Materials \(token)"
         }
     }
@@ -260,6 +277,17 @@ final class AppStore: ObservableObject {
         if save {
             self.save()
         }
+    }
+
+    /// Writes endsheet designs to both the project record and the bind-time job.
+    func updateSelectedEndsheets(save: Bool = true, _ mutate: (inout EndpaperDesign) -> Void) {
+        guard let projectID = selectedProject?.id else { return }
+        let workspace = workspace(for: projectID)
+        updateSelectedProject(save: save) { project in
+            mutate(&project.endsheets)
+            workspace.job.endpapers = project.endsheets
+        }
+        workspace.markChanged()
     }
 
     func renameProject(_ id: UUID, title: String, author: String) {

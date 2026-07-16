@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C8742F47876B45088F1EB54C /* EndsheetExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F549DA4CB464B65B2E318C2 /* EndsheetExportService.swift */; };
+		BBAC338024BF44908BF64BFA /* EndsheetDesignerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991A0B9B2C4E4E6A948E364E /* EndsheetDesignerView.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D4E5F6A7B8C9D0E1F2A3B4C5 /* Assets.xcassets */; };
 		006CA3DED4344E30DA4B7C1B /* AssetLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DFED920065BBF5DECAD3E5 /* AssetLibraryService.swift */; };
 		0375CBC0D8532FEBB02F35EF /* StrokeDashControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56B4884FF79036AE8C68CF04 /* StrokeDashControls.swift */; };
@@ -80,6 +82,8 @@
 		2D18CD0F82B63693D77E7DF0 /* BookBind.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BookBind.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3196599CDA9251896DC68032 /* BookBindTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BookBindTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		380B0B211C5E7663FA595B77 /* EndpaperModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpaperModels.swift; sourceTree = "<group>"; };
+		5F549DA4CB464B65B2E318C2 /* EndsheetExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndsheetExportService.swift; sourceTree = "<group>"; };
+		991A0B9B2C4E4E6A948E364E /* EndsheetDesignerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndsheetDesignerView.swift; sourceTree = "<group>"; };
 		4036A92023112FE6E1CBB362 /* CoverBlueprintService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverBlueprintService.swift; sourceTree = "<group>"; };
 		4B52074E8267F433BC358BBC /* CoverShapeElementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverShapeElementView.swift; sourceTree = "<group>"; };
 		524ABF362D870D95E449341E /* AssetLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetLibraryTests.swift; sourceTree = "<group>"; };
@@ -255,6 +259,7 @@
 				53A377B2BBB404F194C12F27 /* CoverDesignerView.swift */,
 				0107362550F8D2B282047A69 /* CoverScrollZoomView.swift */,
 				DAEE3930DCA83EC218925EB0 /* EndpaperDesignerView.swift */,
+				991A0B9B2C4E4E6A948E364E /* EndsheetDesignerView.swift */,
 				F9D1537890FD10D38714D3C0 /* EndpaperMarbleThumbnail.swift */,
 				BD0C0FF225F8012303EDA91F /* ImpositionWorkbenchView.swift */,
 				E60FC373E63F88F7E6251E15 /* MaterialsLogView.swift */,
@@ -278,6 +283,7 @@
 				A7DFED920065BBF5DECAD3E5 /* AssetLibraryService.swift */,
 				013E5A8268207F96B47911B9 /* BindingMath.swift */,
 				4036A92023112FE6E1CBB362 /* CoverBlueprintService.swift */,
+				5F549DA4CB464B65B2E318C2 /* EndsheetExportService.swift */,
 				C80F8791BC7622F4A8E3AD8C /* CoverEditorMath.swift */,
 				67F53C094760E197C4C4E4A7 /* ImpositionService.swift */,
 				7C9C6776596DD89059C27C85 /* MarbledPaperGenerator.swift */,
@@ -409,6 +415,8 @@
 				FF53CC300C9BA15E25A1C6B9 /* DesignCanvasTool.swift in Sources */,
 				F63AAEBD123E23AEC84785F8 /* DesignPaint.swift in Sources */,
 				7FAD820882FF10523E5FFD4F /* EndpaperDesignerView.swift in Sources */,
+				BBAC338024BF44908BF64BFA /* EndsheetDesignerView.swift in Sources */,
+				C8742F47876B45088F1EB54C /* EndsheetExportService.swift in Sources */,
 				DE2F7302B97E5A0AFA7E0A21 /* EndpaperMarbleThumbnail.swift in Sources */,
 				66555778C6A5D622F2178737 /* EndpaperModels.swift in Sources */,
 				171AE411DF39C2DF6541DB89 /* FillControls.swift in Sources */,
