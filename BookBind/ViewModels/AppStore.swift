@@ -16,6 +16,8 @@ final class AppStore: ObservableObject {
     private var restoredWorkspaceStates: [UUID: BindingWorkspaceState] = [:]
     private let projectStore: ProjectStore
     private let assetLibraryService: AssetLibraryService
+    /// Calculator inputs, kept for the app session so leaving the page doesn't reset them.
+    let calculators = CalculatorSession()
 
     init(
         projectStore: ProjectStore = ProjectStore(),
@@ -60,6 +62,7 @@ final class AppStore: ObservableObject {
             return existing
         }
         let workspace = BindingWorkspace()
+        workspace.documentTitle = projects.first { $0.id == projectID }?.title ?? ""
         if let restored = restoredWorkspaceStates[projectID] {
             workspace.restore(restored)
         }
@@ -128,7 +131,7 @@ final class AppStore: ObservableObject {
                 if workspace.job.resolvedTrimSize == nil {
                     workspace.job.applyProjectTrim(widthMM: project.widthMM, heightMM: project.heightMM)
                 }
-            case .materials:
+            case .preview, .materials:
                 break
             }
         }
@@ -182,6 +185,58 @@ final class AppStore: ObservableObject {
             enabledTools: [tool],
             initialTool: tool
         )
+    }
+
+    /// Starts an imposition project preconfigured for an 8-page one-sheet zine on Letter landscape stock.
+    func startZineQuickWork(scheme: ImpositionScheme = .miniZine8) {
+        let kind = ProjectKind.allCases.first { $0.scheme == scheme } ?? .miniZine8
+        let page = kind.pageSize(fromStock: .letter)
+        createMasterwork(
+            title: Self.scratchTitle(forZine: scheme),
+            author: "",
+            heightMM: page.height,
+            widthMM: page.width,
+            architecture: .saddleStitch,
+            enabledTools: [.imposition],
+            initialTool: .imposition
+        )
+        configureFoldLayout(scheme: scheme, stock: .letter)
+    }
+
+    /// Creates a project from the New Masterwork sheet — a bound book or a one-sheet fold.
+    func createProject(_ request: NewProjectRequest) {
+        let kind = request.kind
+        let page = kind.usesStockSheet
+            ? kind.pageSize(fromStock: request.stock)
+            : (width: request.widthMM, height: request.heightMM)
+        createMasterwork(
+            title: request.title,
+            author: request.author,
+            heightMM: page.height,
+            widthMM: page.width,
+            architecture: kind.architecture,
+            enabledTools: kind.enabledTools,
+            initialTool: kind.usesStockSheet ? .imposition : nil
+        )
+        if let scheme = kind.scheme {
+            configureFoldLayout(scheme: scheme, stock: request.stock)
+        }
+    }
+
+    /// Points the selected project's imposition at a fold layout printed on `stock`.
+    private func configureFoldLayout(scheme: ImpositionScheme, stock: StockSheet) {
+        guard let projectID = selectedProject?.id else { return }
+        let workspace = workspace(for: projectID)
+        if scheme.paperSizeIsStockSheet {
+            // Single-sheet layouts: paper size is the landscape stock sheet.
+            workspace.job.paperSize = .custom
+            workspace.job.customPageWidth = BindingMath.points(fromMillimeters: stock.longMM)
+            workspace.job.customPageHeight = BindingMath.points(fromMillimeters: stock.shortMM)
+        }
+        workspace.job.applyImpositionScheme(scheme)
+        workspace.refreshPlan()
+        workspace.onChange?()
+        save()
     }
 
     func createMasterwork(
@@ -264,7 +319,19 @@ final class AppStore: ObservableObject {
         case .imposition: return "Signature \(token)"
         case .cover: return "Cover \(token)"
         case .endpapers: return "Endpapers \(token)"
+        case .preview: return "Preview \(token)"
         case .materials: return "Materials \(token)"
+        }
+    }
+
+    private static func scratchTitle(forZine scheme: ImpositionScheme) -> String {
+        let token = String(UUID().uuidString.prefix(4)).uppercased()
+        switch scheme {
+        case .miniZine8: return "Zine \(token)"
+        case .miniZine16: return "Mini-zine \(token)"
+        case .accordion: return "Accordion \(token)"
+        case .halfFoldBooklet: return "Booklet \(token)"
+        case .folioSignatures: return "Signature \(token)"
         }
     }
 
@@ -297,7 +364,30 @@ final class AppStore: ObservableObject {
         projects[index].title = trimmedTitle
         projects[index].author = author.trimmingCharacters(in: .whitespacesAndNewlines)
         projects[index].updatedAt = Date()
+        if let workspace = workspaces[id] {
+            // The slug line on imposed sheets carries the title; re-bind with the new one.
+            workspace.documentTitle = trimmedTitle
+            workspace.scheduleAutoBind()
+        }
         save()
+    }
+
+    /// Applies a preflight remedy to a project's imposition or cover.
+    func applyPreflightFix(_ fix: PreflightIssue.Fix, projectID: UUID) {
+        let workspace = workspace(for: projectID)
+        switch fix {
+        case .applyCreep(let points):
+            workspace.job.creepPoints = CGFloat(points)
+            workspace.markChanged()
+        case .enableCropMarks:
+            workspace.job.addCropMarks = true
+            workspace.markChanged()
+        case .matchCoverToTrim:
+            guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return }
+            projects[index].applyImpositionTrim(from: workspace.job)
+            projects[index].updatedAt = Date()
+            save()
+        }
     }
 
     func duplicateProject(_ id: UUID) {

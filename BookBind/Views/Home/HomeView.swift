@@ -51,8 +51,7 @@ struct HomeView: View {
             .frame(maxWidth: 1500, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(ArtisanTheme.surfaceBright)
-        .navigationTitle("")
+        .background(ArtisanTheme.contentBackground)
     }
 
     private var emptyState: some View {
@@ -68,22 +67,22 @@ struct HomeView: View {
                         .foregroundStyle(ArtisanTheme.primary)
                     Text("Create a book project to keep imposition, boards, spine estimates, foil layers, and material notes together.")
                         .font(ArtisanTheme.bodyFont)
-                        .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.82))
+                        .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.82))
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text("New Masterwork")
                         .font(ArtisanTheme.buttonFont)
-                        .foregroundStyle(ArtisanTheme.surfaceBright)
+                        .foregroundStyle(ArtisanTheme.onSecondary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(ArtisanTheme.secondary, in: RoundedRectangle(cornerRadius: ArtisanTheme.controlRadius, style: .continuous))
                 }
                 .padding(20)
                 .frame(maxWidth: 480, alignment: .leading)
-                .background(ArtisanTheme.surfaceContainerLowest, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(ArtisanTheme.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(ArtisanTheme.outlineVariant.opacity(0.55), lineWidth: 1)
+                        .stroke(ArtisanTheme.separator.opacity(0.55), lineWidth: 1)
                 }
             }
             .buttonStyle(.plain)
@@ -123,14 +122,14 @@ struct HomeView: View {
                         }
                         if index < sortedProjects.count - 1 {
                             Divider()
-                                .background(ArtisanTheme.outlineVariant.opacity(0.35))
+                                .background(ArtisanTheme.separator.opacity(0.35))
                         }
                     }
                 }
-                .background(ArtisanTheme.surfaceContainerLowest, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(ArtisanTheme.cardBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(ArtisanTheme.outlineVariant.opacity(0.45), lineWidth: 1)
+                        .stroke(ArtisanTheme.separator.opacity(0.45), lineWidth: 1)
                 }
             }
         }
@@ -145,11 +144,11 @@ struct HomeView: View {
                 } label: {
                     Image(systemName: mode.systemImage)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(isSelected ? ArtisanTheme.primary : ArtisanTheme.onSurfaceVariant.opacity(0.72))
+                        .foregroundStyle(isSelected ? ArtisanTheme.primary : ArtisanTheme.textSecondary.opacity(0.72))
                         .frame(width: 34, height: 26)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isSelected ? ArtisanTheme.surfaceContainerLowest : Color.clear)
+                                .fill(isSelected ? ArtisanTheme.cardBackground : Color.clear)
                         )
                 }
                 .buttonStyle(.plain)
@@ -161,11 +160,11 @@ struct HomeView: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(ArtisanTheme.surfaceContainer)
+                .fill(ArtisanTheme.raisedFill)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(ArtisanTheme.outlineVariant.opacity(0.45), lineWidth: 1)
+                .stroke(ArtisanTheme.separator.opacity(0.45), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Project layout")
@@ -176,15 +175,7 @@ struct HomeView: View {
     }
 
     private func sectionTitle(_ title: String) -> some View {
-        HStack(spacing: 14) {
-            Rectangle()
-                .fill(ArtisanTheme.outlineVariant.opacity(0.35))
-                .frame(width: 32, height: 1)
-            Text(title.uppercased())
-                .font(ArtisanTheme.labelFont)
-                .tracking(2.2)
-                .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.46))
-        }
+        ContentSectionTitle(title)
     }
 }
 
@@ -210,37 +201,37 @@ private struct ProjectCard: View {
 
                     Text(project.updatedAt.formatted(.dateTime.month(.abbreviated).day()))
                         .font(ArtisanTheme.labelFont)
-                        .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.55))
+                        .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.55))
                 }
 
                 HStack(spacing: 6) {
                     ForEach(project.dashboardTags, id: \.self) { tag in
                         Text(tag)
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.68))
+                            .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.68))
                             .lineLimit(1)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .overlay {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .stroke(ArtisanTheme.outlineVariant.opacity(0.45), lineWidth: 1)
+                                    .stroke(ArtisanTheme.separator.opacity(0.45), lineWidth: 1)
                             }
                     }
                 }
 
                 Text("\(project.displaySubtitle) · \(project.trimLabel)")
                     .font(.system(size: 13))
-                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.78))
+                    .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.78))
                     .lineLimit(1)
 
                 ProjectProgressBar(status: status, barHeight: 3)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(ArtisanTheme.surfaceContainerLowest, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(ArtisanTheme.cardBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(ArtisanTheme.outlineVariant.opacity(0.45), lineWidth: 1)
+                    .stroke(ArtisanTheme.separator.opacity(0.45), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -266,24 +257,24 @@ private struct ProjectListRow: View {
 
                     Text("\(project.displaySubtitle) · \(project.trimLabel)")
                         .font(.system(size: 12))
-                        .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.72))
+                        .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.72))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(status.phase)
                     .font(ArtisanTheme.labelFont)
-                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.55))
+                    .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.55))
                     .lineLimit(1)
 
                 Text(project.updatedAt.formatted(.dateTime.month(.abbreviated).day()))
                     .font(ArtisanTheme.labelFont)
-                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.5))
+                    .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.5))
                     .frame(width: 48, alignment: .trailing)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.35))
+                    .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.35))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -303,17 +294,17 @@ private struct ProjectProgressBar: View {
                 Text(status.phase.uppercased())
                     .font(ArtisanTheme.labelFont)
                     .tracking(0.8)
-                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.55))
+                    .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.55))
                 Spacer()
                 Text("\(status.progress)%")
                     .font(ArtisanTheme.labelFont)
-                    .foregroundStyle(ArtisanTheme.onSurfaceVariant.opacity(0.55))
+                    .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.55))
             }
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(ArtisanTheme.surfaceContainerHigh)
+                        .fill(ArtisanTheme.raisedFill)
                     Capsule()
                         .fill(status.progress > 55 ? ArtisanTheme.primary : ArtisanTheme.primary.opacity(0.35))
                         .frame(width: proxy.size.width * CGFloat(status.progress) / 100)
@@ -425,65 +416,6 @@ struct RenameMasterworkSheet: View {
             .padding(20)
         }
         .frame(width: 420, height: 280)
-    }
-}
-
-struct NewMasterworkSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var title = ""
-    @State private var author = ""
-    @State private var heightMM = 229.0
-    @State private var widthMM = 152.0
-    @State private var architecture: BindingArchitecture = .caseBound
-
-    let onCreate: (String, String, Double, Double, BindingArchitecture) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("New Masterwork")
-                .font(ArtisanTheme.sectionFont)
-                .padding(20)
-
-            Divider()
-
-            Form {
-                TextField("Title", text: $title)
-                TextField("Author", text: $author)
-
-                Picker("Architecture", selection: $architecture) {
-                    ForEach(BindingArchitecture.allCases) { item in
-                        Text(item.rawValue).tag(item)
-                    }
-                }
-
-                HStack {
-                    TextField("Width (mm)", value: $widthMM, format: .number)
-                    TextField("Height (mm)", value: $heightMM, format: .number)
-                }
-
-                Text(architecture.help)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .formStyle(.grouped)
-            .padding(.horizontal, 8)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Create") {
-                    onCreate(title, author, heightMM, widthMM, architecture)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .buttonStyle(.borderedProminent)
-                .tint(ArtisanTheme.primary)
-            }
-            .padding(20)
-        }
-        .frame(width: 420, height: 420)
     }
 }
 

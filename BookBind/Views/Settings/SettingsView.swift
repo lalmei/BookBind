@@ -1,34 +1,38 @@
 import SwiftUI
 
+/// Preferences window (⌘,). Kept small and form-based, like other Mac apps.
 struct SettingsView: View {
     @AppStorage("defaultPaperGSM") private var defaultPaperGSM = 80.0
     @AppStorage("preferGuideMarks") private var preferGuideMarks = false
+    @AppStorage(MeasurementUnit.storageKey) private var unitRaw = MeasurementUnit.millimeters.rawValue
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Settings")
-                    .font(ArtisanTheme.displayFont)
-                    .foregroundStyle(ArtisanTheme.primary)
-
-                Text("Preferences for new work. Equipment calibration can grow here later.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Form {
+        TabView {
+            Form {
+                Section {
+                    Picker("Measurement units", selection: $unitRaw) {
+                        ForEach(MeasurementUnit.allCases) { unit in
+                            Text(unit.label).tag(unit.rawValue)
+                        }
+                    }
+                } footer: {
+                    Text("Length fields show this unit. Any field also accepts other units and arithmetic — 6in, 152mm, 1p6, 210-6.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
                     TextField("Default text paper (GSM)", value: $defaultPaperGSM, format: .number)
                     Toggle("Prefer guide marks on new imposes", isOn: $preferGuideMarks)
+                } footer: {
                     Text("These defaults apply when you create a new masterwork.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .formStyle(.grouped)
-                .frame(maxWidth: 480)
             }
-            .padding(36)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .formStyle(.grouped)
+            .tabItem { Label("General", systemImage: "gearshape") }
         }
-        .background(ArtisanTheme.surfaceBright)
+        .frame(width: 480, height: 320)
     }
 }
 
@@ -36,10 +40,6 @@ struct SupportView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Support")
-                    .font(ArtisanTheme.displayFont)
-                    .foregroundStyle(ArtisanTheme.primary)
-
                 Text("Short binding guides and current product boundaries.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -85,7 +85,7 @@ struct SupportView: View {
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(ArtisanTheme.surfaceBright)
+        .background(ArtisanTheme.contentBackground)
     }
 
     private func guideRow(_ title: String, _ body: String) -> some View {

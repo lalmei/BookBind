@@ -6,3 +6,6 @@ DerivedData/
 *.dmg
 .DS_Store
 *.swiftpm/
+
+# Local Xcode UI state
+**/xcuserdata/

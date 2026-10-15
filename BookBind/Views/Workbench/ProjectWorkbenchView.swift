@@ -1,208 +1,224 @@
 import AppKit
 import SwiftUI
 
-/// Project-scoped workbench: imposition, cover, endpapers, and materials — not global nav items.
+/// Project-scoped workbench: imposition, cover, endpapers, preview, and materials — not global nav items.
+///
+/// Owns the window toolbar for every tool so the layout never shifts between them:
+/// project title on the left, tool switcher centered, tool actions + inspector toggle on the right.
 struct ProjectWorkbenchView: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.colorScheme) private var colorScheme
     let project: BinderyProject
     @ObservedObject var workspace: BindingWorkspace
     @State private var toolPendingUnlock: ProjectTool?
-    @State private var isEditingTitle = false
-    @State private var titleDraft = ""
-    @FocusState private var isTitleFieldFocused: Bool
     @StateObject private var coverChrome = CoverEditorChrome()
     @StateObject private var endsheetChrome = CoverEditorChrome()
+    @StateObject private var previewChrome = BookPreviewChrome()
     @State private var endsheetEditingFront = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            workbenchHeader
-            Divider()
-            toolBody
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                projectToolPicker
-            }
-        }
-        .alert(
-            toolPendingUnlock?.unlockPromptTitle ?? "Add section?",
-            isPresented: Binding(
-                get: { toolPendingUnlock != nil },
-                set: { if !$0 { toolPendingUnlock = nil } }
-            )
-        ) {
-            Button("Cancel", role: .cancel) {
-                toolPendingUnlock = nil
-            }
-            Button("Create Section") {
-                if let tool = toolPendingUnlock {
-                    store.enableTool(tool)
+        toolBody
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(titleBinding)
+            .navigationSubtitle(project.displaySubtitle)
+            .toolbarRole(.editor)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    projectToolPicker
                 }
-                toolPendingUnlock = nil
-            }
-        } message: {
-            Text(toolPendingUnlock?.unlockPromptMessage ?? "")
-        }
-        .onChange(of: project.id) { _ in
-            coverChrome.viewMode = .fit
-            coverChrome.zoomFactor = 1.0
-            endsheetChrome.viewMode = .fit
-            endsheetChrome.zoomFactor = 1.0
-            endsheetEditingFront = true
-        }
-    }
-
-    /// Project identity in the content chrome; tool switcher lives in the window toolbar.
-    private var workbenchHeader: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                projectTitleView
-                Text(project.displaySubtitle)
-                    .font(.caption)
-                    .foregroundStyle(headerSubtitleColor)
-            }
-
-            Spacer(minLength: 0)
-
-            if store.projectTool == .cover {
-                CoverWorkbenchHeaderControls(
-                    project: project,
-                    workspace: workspace,
-                    chrome: coverChrome
-                )
-            } else if store.projectTool == .endpapers {
-                EndsheetWorkbenchHeaderControls(
-                    project: project,
-                    workspace: workspace,
-                    chrome: endsheetChrome,
-                    isFront: $endsheetEditingFront
-                )
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(.bar)
-    }
-
-    @ViewBuilder
-    private var projectTitleView: some View {
-        if isEditingTitle {
-            TextField("Project name", text: $titleDraft)
-                .textFieldStyle(.plain)
-                .font(ArtisanTheme.sectionFont)
-                .foregroundStyle(headerTitleColor)
-                .lineLimit(1)
-                .focused($isTitleFieldFocused)
-                .onSubmit { commitTitleEdit() }
-                .onChange(of: isTitleFieldFocused) { focused in
-                    guard !focused, isEditingTitle else { return }
-                    commitTitleEdit()
-                }
-                .onExitCommand { cancelTitleEdit() }
-        } else {
-            Text(project.title)
-                .font(ArtisanTheme.sectionFont)
-                .foregroundStyle(headerTitleColor)
-                .help("Double-click to rename")
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { beginTitleEdit() }
-        }
-    }
-
-    private func beginTitleEdit() {
-        titleDraft = project.title
-        isEditingTitle = true
-        DispatchQueue.main.async {
-            isTitleFieldFocused = true
-        }
-    }
-
-    private func commitTitleEdit() {
-        isEditingTitle = false
-        isTitleFieldFocused = false
-
-        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            titleDraft = project.title
-            return
-        }
-        guard trimmed != project.title else { return }
-        store.renameProject(project.id, title: trimmed, author: project.author)
-    }
-
-    private func cancelTitleEdit() {
-        isEditingTitle = false
-        titleDraft = project.title
-        isTitleFieldFocused = false
-    }
-
-    /// Brand navy is for light paper surfaces only — never on a dark window bar.
-    private var headerTitleColor: Color {
-        colorScheme == .dark ? .white : ArtisanTheme.primary
-    }
-
-    private var headerSubtitleColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.65) : Color(nsColor: .secondaryLabelColor)
-    }
-
-    private var projectToolPicker: some View {
-        HStack(spacing: 2) {
-            ForEach(ProjectTool.allCases) { tool in
-                toolButton(tool)
-            }
-        }
-        .padding(3)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay {
-            Capsule(style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-        }
-        .help(store.projectTool.help)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Tool")
-    }
-
-    private func toolButton(_ tool: ProjectTool) -> some View {
-        let isSelected = store.projectTool == tool
-        let isEnabled = project.allows(tool)
-        return Button {
-            if isEnabled {
-                store.selectProjectTool(tool)
-            } else {
-                toolPendingUnlock = tool
-            }
-        } label: {
-            Text(tool.title)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(toolForeground(isSelected: isSelected, isEnabled: isEnabled))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background {
-                    if isSelected && isEnabled {
-                        Capsule(style: .continuous)
-                            .fill(headerTitleColor.opacity(colorScheme == .dark ? 0.18 : 0.1))
+                ToolbarItemGroup(placement: .primaryAction) {
+                    PreflightButton(project: project, workspace: workspace)
+                    toolActions
+                    if store.projectTool.hasInspector {
+                        WorkbenchInspectorChrome.ToolbarToggle()
                     }
                 }
-        }
-        .buttonStyle(.plain)
-        .help(isEnabled ? tool.help : "Click to add a \(tool.sectionName) section to this project.")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityHint(isEnabled ? "" : "Not included yet — activates a prompt to create this section")
+            }
+            .alert(
+                toolPendingUnlock?.unlockPromptTitle ?? "Add section?",
+                isPresented: Binding(
+                    get: { toolPendingUnlock != nil },
+                    set: { if !$0 { toolPendingUnlock = nil } }
+                )
+            ) {
+                Button("Cancel", role: .cancel) {
+                    toolPendingUnlock = nil
+                }
+                Button("Create Section") {
+                    if let tool = toolPendingUnlock {
+                        store.enableTool(tool)
+                    }
+                    toolPendingUnlock = nil
+                }
+            } message: {
+                Text(toolPendingUnlock?.unlockPromptMessage ?? "")
+            }
+            .onChange(of: project.id) { _ in
+                coverChrome.viewMode = .fit
+                coverChrome.zoomFactor = 1.0
+                endsheetChrome.viewMode = .fit
+                endsheetChrome.zoomFactor = 1.0
+                endsheetEditingFront = true
+                previewChrome.openAmount = 0
+            }
     }
 
-    private func toolForeground(isSelected: Bool, isEnabled: Bool) -> Color {
-        if !isEnabled {
-            return headerTitleColor.opacity(colorScheme == .dark ? 0.28 : 0.32)
+    /// Editable window title (click the title to rename, as in document-based Mac apps).
+    private var titleBinding: Binding<String> {
+        Binding(
+            get: { project.title },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty, trimmed != project.title else { return }
+                store.renameProject(project.id, title: trimmed, author: project.author)
+            }
+        )
+    }
+
+    // MARK: - Tool switcher
+
+    /// Native segmented control. Locked tools stay visible with a "+" so they read as
+    /// "add this section" rather than disabled; choosing one asks before unlocking.
+    private var projectToolPicker: some View {
+        Picker("Tool", selection: Binding(
+            get: { store.projectTool },
+            set: { tool in
+                if project.allows(tool) {
+                    store.selectProjectTool(tool)
+                } else {
+                    toolPendingUnlock = tool
+                }
+            }
+        )) {
+            ForEach(ProjectTool.allCases) { tool in
+                toolLabel(tool).tag(tool)
+            }
         }
-        return isSelected
-            ? headerTitleColor
-            : headerTitleColor.opacity(colorScheme == .dark ? 0.75 : 0.7)
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help(store.projectTool.help)
+    }
+
+    private func toolLabel(_ tool: ProjectTool) -> Text {
+        if project.allows(tool) {
+            return Text(tool.title)
+        }
+        return Text(Image(systemName: "plus")) + Text(" ") + Text(tool.title)
+    }
+
+    // MARK: - Tool actions
+
+    @ViewBuilder
+    private var toolActions: some View {
+        switch store.projectTool {
+        case .imposition:
+            Button {
+                workspace.showSignatureMap = true
+            } label: {
+                Label("Sheet Map", systemImage: "square.grid.3x2")
+            }
+            .disabled(workspace.signatureMap == nil)
+            .help("Show signature / sheet page layout")
+
+            Button {
+                workspace.showFoldGuide = true
+            } label: {
+                Label("Fold Guide", systemImage: "scissors")
+            }
+            .help("Show fold and cut instructions for this layout")
+
+            if workspace.isWorking || workspace.isPreviewStale {
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Binding with the latest settings…")
+            }
+
+            Button {
+                workspace.exportBoundPDF()
+            } label: {
+                Label("Export PDF", systemImage: "square.and.arrow.up")
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(!workspace.canExport)
+            .help("Export the imposed PDF (⇧⌘S) — binds automatically as you edit")
+
+        case .cover:
+            CanvasZoomControls(chrome: coverChrome)
+            exportMenu(
+                production: {
+                    CoverExportService.exportSVG(project: project, workspace: workspace, store: store, mode: .production)
+                },
+                clean: {
+                    CoverExportService.exportSVG(project: project, workspace: workspace, store: store, mode: .clean)
+                },
+                blueprint: {
+                    CoverExportService.exportBlueprintPDF(project: project, workspace: workspace, store: store)
+                }
+            )
+
+        case .endpapers:
+            CanvasZoomControls(chrome: endsheetChrome)
+            exportMenu(
+                production: {
+                    EndsheetExportService.exportSVG(
+                        project: project, workspace: workspace, store: store,
+                        isFront: endsheetEditingFront, mode: .production
+                    )
+                },
+                clean: {
+                    EndsheetExportService.exportSVG(
+                        project: project, workspace: workspace, store: store,
+                        isFront: endsheetEditingFront, mode: .clean
+                    )
+                },
+                blueprint: {
+                    EndsheetExportService.exportBlueprintPDF(
+                        project: project, workspace: workspace, store: store,
+                        isFront: endsheetEditingFront
+                    )
+                }
+            )
+
+        case .preview:
+            Button {
+                previewChrome.toggleOpen()
+            } label: {
+                Label(
+                    previewChrome.isOpen ? "Close Book" : "Open Book",
+                    systemImage: previewChrome.isOpen ? "book.closed" : "book"
+                )
+            }
+            .help(previewChrome.isOpen ? "Close the book" : "Open the book")
+
+            Button {
+                previewChrome.resetCamera()
+            } label: {
+                Label("Reset Camera", systemImage: "camera.metering.center.weighted")
+            }
+            .help("Reset the camera to the default view")
+
+        case .materials:
+            EmptyView()
+        }
+    }
+
+    /// One Export control per canvas tool: the primary click exports the blueprint PDF,
+    /// the menu offers the SVG variants.
+    private func exportMenu(
+        production: @escaping () -> Void,
+        clean: @escaping () -> Void,
+        blueprint: @escaping () -> Void
+    ) -> some View {
+        Menu {
+            Button("Blueprint PDF…", action: blueprint)
+            Divider()
+            Button("Production SVG…", action: production)
+            Button("Clean Artwork SVG…", action: clean)
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+        } primaryAction: {
+            blueprint()
+        }
+        .help("Export blueprint PDF; hold for SVG options")
     }
 
     @ViewBuilder
@@ -227,116 +243,35 @@ struct ProjectWorkbenchView: View {
                 chrome: endsheetChrome,
                 editingFront: $endsheetEditingFront
             )
+        case .preview:
+            BookPreviewWorkbenchView(project: project, workspace: workspace, chrome: previewChrome)
         case .materials:
             MaterialsLogView(project: project)
         }
     }
 }
 
-private struct CoverWorkbenchHeaderControls: View {
-    @EnvironmentObject private var store: AppStore
-    let project: BinderyProject
-    @ObservedObject var workspace: BindingWorkspace
+/// Fit / 1:1 scale and live zoom readout for the cover and endpaper canvases.
+private struct CanvasZoomControls: View {
     @ObservedObject var chrome: CoverEditorChrome
 
     var body: some View {
-        HStack(spacing: 12) {
-            Picker("Scale", selection: $chrome.viewMode) {
-                ForEach(CoverEditorChrome.ViewMode.allCases) { mode in
-                    Text(mode.shortLabel).tag(mode)
-                }
+        Picker("Scale", selection: $chrome.viewMode) {
+            ForEach(CoverEditorChrome.ViewMode.allCases) { mode in
+                Text(mode.shortLabel).tag(mode)
             }
-            .pickerStyle(.segmented)
-            .frame(width: 100)
-            .labelsHidden()
-
-            Button {
-                chrome.zoomFactor = 1.0
-            } label: {
-                Text(String(format: "%.0f%%", chrome.zoomFactor * 100))
-                    .font(ArtisanTheme.technicalCaption)
-                    .monospacedDigit()
-            }
-            .buttonStyle(.borderless)
-            .help("Reset pinch zoom")
-
-            Menu("Export") {
-                Button("SVG…") {
-                    CoverExportService.exportSVG(project: project, workspace: workspace, store: store)
-                }
-                Button("Blueprint PDF…") {
-                    CoverExportService.exportBlueprintPDF(project: project, workspace: workspace, store: store)
-                }
-            }
-            .menuStyle(.borderlessButton)
-
-            Button("Export PDF…") {
-                CoverExportService.exportBlueprintPDF(project: project, workspace: workspace, store: store)
-            }
-            .buttonStyle(.bordered)
         }
-        .tint(Color(nsColor: .labelColor))
-    }
-}
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help("Fit to window or show at 1:1 scale")
 
-private struct EndsheetWorkbenchHeaderControls: View {
-    @EnvironmentObject private var store: AppStore
-    let project: BinderyProject
-    @ObservedObject var workspace: BindingWorkspace
-    @ObservedObject var chrome: CoverEditorChrome
-    @Binding var isFront: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Picker("Scale", selection: $chrome.viewMode) {
-                ForEach(CoverEditorChrome.ViewMode.allCases) { mode in
-                    Text(mode.shortLabel).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 100)
-            .labelsHidden()
-
-            Button {
-                chrome.zoomFactor = 1.0
-            } label: {
-                Text(String(format: "%.0f%%", chrome.zoomFactor * 100))
-                    .font(ArtisanTheme.technicalCaption)
-                    .monospacedDigit()
-            }
-            .buttonStyle(.borderless)
-            .help("Reset pinch zoom")
-
-            Menu("Export") {
-                Button("SVG…") {
-                    EndsheetExportService.exportSVG(
-                        project: project,
-                        workspace: workspace,
-                        store: store,
-                        isFront: isFront
-                    )
-                }
-                Button("Blueprint PDF…") {
-                    EndsheetExportService.exportBlueprintPDF(
-                        project: project,
-                        workspace: workspace,
-                        store: store,
-                        isFront: isFront
-                    )
-                }
-            }
-            .menuStyle(.borderlessButton)
-
-            Button("Export PDF…") {
-                EndsheetExportService.exportBlueprintPDF(
-                    project: project,
-                    workspace: workspace,
-                    store: store,
-                    isFront: isFront
-                )
-            }
-            .buttonStyle(.bordered)
+        Button {
+            chrome.zoomFactor = 1.0
+        } label: {
+            Text(String(format: "%.0f%%", chrome.zoomFactor * 100))
+                .monospacedDigit()
+                .frame(minWidth: 40)
         }
-        .tint(Color(nsColor: .labelColor))
+        .help("Reset zoom")
     }
 }

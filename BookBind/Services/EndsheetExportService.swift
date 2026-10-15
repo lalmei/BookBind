@@ -11,52 +11,128 @@ enum EndsheetBlueprintService {
         geometry: EndsheetGeometry,
         isFront: Bool,
         projectTitle: String,
-        to url: URL
+        to url: URL,
+        mode: SVGDocumentBuilder.ExportMode = .production
     ) throws {
-        let margin = 12.0
+        let margin = mode.includesGuides ? 12.0 : 0.0
+        let labelBand = mode.includesGuides ? 28.0 : 0.0
         let canvasW = geometry.totalW + margin * 2
-        let canvasH = geometry.leafH + margin * 2 + 28
-        let fmt: (Double) -> String = { String(format: "%.3f", $0) }
-
+        let canvasH = geometry.leafH + margin * 2 + labelBand
         let leftZone = geometry.zone(forHalfIndex: 0, isFront: isFront)
         let rightZone = geometry.zone(forHalfIndex: 1, isFront: isFront)
 
-        var fillSVG = ""
-        switch face.mode {
-        case .blank:
-            fillSVG = """
-            <rect x="0" y="0" width="\(fmt(geometry.totalW))" height="\(fmt(geometry.leafH))" fill="#ffffff" stroke="#c8c8c8" stroke-width="0.25"/>
-            """
-        case .solidColor:
-            let hex = svgHex(face.solidColor.cgColor)
-            fillSVG = """
-            <rect x="0" y="0" width="\(fmt(geometry.totalW))" height="\(fmt(geometry.leafH))" fill="\(hex)" stroke="#002045" stroke-width="0.25"/>
-            """
-        case .marbled, .artwork:
-            // Vector export of bitmap fills: paper plate + note for production bitmap/PDF.
-            fillSVG = """
-            <rect x="0" y="0" width="\(fmt(geometry.totalW))" height="\(fmt(geometry.leafH))" fill="#f7f4ec" stroke="#002045" stroke-width="0.25"/>
-            <text x="\(fmt(geometry.totalW / 2))" y="\(fmt(geometry.leafH / 2))" text-anchor="middle" font-family="system-ui, sans-serif" font-size="4" fill="#74777f">\(face.mode.title) — export blueprint PDF for preview</text>
+        var svg = SVGDocumentBuilder.rootOpen(
+            widthMM: canvasW,
+            heightMM: canvasH,
+            title: "\(projectTitle) — \(isFront ? "Front" : "Back") endsheet \(mode == .clean ? "artwork" : "")"
+        )
+        svg += "<g transform=\"translate(\(SVGDocumentBuilder.fmt(margin)), \(SVGDocumentBuilder.fmt(margin + (mode.includesGuides ? 16 : 0))))\">\n"
+        if mode.includesGuides {
+            svg += """
+            <text x="0" y="-8" font-family="system-ui, sans-serif" font-size="3.2" fill="#74777f" letter-spacing="0.4">FLAT ENDSHEET \(SVGDocumentBuilder.fmt(geometry.totalW)) × \(SVGDocumentBuilder.fmt(geometry.leafH)) mm — fold at \(SVGDocumentBuilder.fmt(geometry.foldXMM)) mm</text>
             """
         }
 
-        let guideOpacity = face.showFoldGuides ? "1" : "0"
-        let svg = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <svg xmlns="http://www.w3.org/2000/svg" width="\(fmt(canvasW))mm" height="\(fmt(canvasH))mm" viewBox="0 0 \(fmt(canvasW)) \(fmt(canvasH))">
-          <title>\(escapeXML(projectTitle)) — \(isFront ? "Front" : "Back") endsheet</title>
-          <g transform="translate(\(fmt(margin)), \(fmt(margin + 16)))">
-            <text x="0" y="-8" font-family="system-ui, sans-serif" font-size="3.2" fill="#74777f" letter-spacing="0.4">FLAT ENDSHEET \(fmt(geometry.totalW)) × \(fmt(geometry.leafH)) mm — fold at \(fmt(geometry.foldXMM)) mm</text>
-            \(fillSVG)
-            <g opacity="\(guideOpacity)">
-              <line x1="\(fmt(geometry.foldXMM))" y1="0" x2="\(fmt(geometry.foldXMM))" y2="\(fmt(geometry.leafH))" stroke="#002045" stroke-width="0.35" stroke-dasharray="2 1.5"/>
-              <text x="\(fmt(geometry.leafW / 2))" y="\(fmt(geometry.leafH + 5))" text-anchor="middle" font-family="system-ui, sans-serif" font-size="2.8" fill="#002045">\(leftZone.title.uppercased())</text>
-              <text x="\(fmt(geometry.leafW + geometry.leafW / 2))" y="\(fmt(geometry.leafH + 5))" text-anchor="middle" font-family="system-ui, sans-serif" font-size="2.8" fill="#002045">\(rightZone.title.uppercased())</text>
-            </g>
-          </g>
-        </svg>
-        """
-        try svg.data(using: .utf8)?.write(to: url, options: .atomic)
+        svg += "<g id=\"artwork\">\n"
+        svg += endsheetArtworkSVG(face: face, geometry: geometry)
+        svg += "</g>\n"
+
+        if mode.includesGuides, face.showFoldGuides {
+            var guides = SVGDocumentBuilder.line(
+                x1: geometry.foldXMM, y1: 0,
+                x2: geometry.foldXMM, y2: geometry.leafH,
+                stroke: "#002045", width: 0.35, dash: "2 1.5"
+            )
+            guides += """
+            <text x="\(SVGDocumentBuilder.fmt(geometry.leafW / 2))" y="\(SVGDocumentBuilder.fmt(geometry.leafH + 5))" text-anchor="middle" font-family="system-ui, sans-serif" font-size="2.8" fill="#002045">\(leftZone.title.uppercased())</text>
+            <text x="\(SVGDocumentBuilder.fmt(geometry.leafW + geometry.leafW / 2))" y="\(SVGDocumentBuilder.fmt(geometry.leafH + 5))" text-anchor="middle" font-family="system-ui, sans-serif" font-size="2.8" fill="#002045">\(rightZone.title.uppercased())</text>
+            """
+            svg += SVGDocumentBuilder.guideGroup(id: "guides-fold", content: guides)
+        }
+
+        svg += "</g>\n"
+        svg += SVGDocumentBuilder.rootClose
+        try Data(svg.utf8).write(to: url, options: .atomic)
+    }
+
+    /// Artwork only — design document elements, or legacy face fill.
+    private static func endsheetArtworkSVG(face: EndpaperFaceDesign, geometry: EndsheetGeometry) -> String {
+        let elements = face.document.orderedElementsForRendering()
+        if !elements.isEmpty {
+            var out = ""
+            for element in elements {
+                out += designElementSVG(element)
+            }
+            return out
+        }
+
+        switch face.mode {
+        case .blank:
+            return SVGDocumentBuilder.rect(
+                x: 0, y: 0, w: geometry.totalW, h: geometry.leafH,
+                fill: "#ffffff", stroke: "#c8c8c8", strokeWidth: 0.25
+            )
+        case .solidColor:
+            return SVGDocumentBuilder.rect(
+                x: 0, y: 0, w: geometry.totalW, h: geometry.leafH,
+                fill: SVGDocumentBuilder.hex(cgColor: face.solidColor.cgColor),
+                stroke: "#002045", strokeWidth: 0.25
+            )
+        case .marbled:
+            if let marble = face.marbling {
+                return SVGDocumentBuilder.marbledImageElement(
+                    spec: marble, x: 0, y: 0,
+                    width: geometry.totalW, height: geometry.leafH
+                )
+            }
+            return SVGDocumentBuilder.rect(
+                x: 0, y: 0, w: geometry.totalW, h: geometry.leafH, fill: "#f7f4ec"
+            )
+        case .artwork:
+            return SVGDocumentBuilder.rect(
+                x: 0, y: 0, w: geometry.totalW, h: geometry.leafH,
+                fill: "#f7f4ec", stroke: "#002045", strokeWidth: 0.25
+            )
+        }
+    }
+
+    private static func designElementSVG(_ element: DesignElement) -> String {
+        let opacity = String(format: "%.2f", min(1, max(0, element.opacity)))
+        switch element.kind {
+        case .shape:
+            var body = ""
+            if let marble = element.fill.marbling {
+                body += SVGDocumentBuilder.marbledImageElement(
+                    spec: marble,
+                    x: element.xMM, y: element.yMM,
+                    width: element.widthMM, height: element.heightMM
+                )
+            } else if let solid = element.fill.solidColor {
+                body += SVGDocumentBuilder.rect(
+                    x: element.xMM, y: element.yMM,
+                    w: element.widthMM, h: element.heightMM,
+                    fill: SVGDocumentBuilder.hex(solid),
+                    stroke: element.stroke.solidColor.map { SVGDocumentBuilder.hex($0) },
+                    strokeWidth: element.strokeWidthMM
+                )
+            } else if let stroke = element.stroke.solidColor {
+                body += SVGDocumentBuilder.rect(
+                    x: element.xMM, y: element.yMM,
+                    w: element.widthMM, h: element.heightMM,
+                    fill: nil,
+                    stroke: SVGDocumentBuilder.hex(stroke),
+                    strokeWidth: element.strokeWidthMM
+                )
+            }
+            return "<g opacity=\"\(opacity)\">\(body)</g>\n"
+        case .text:
+            let fill = element.fill.solidColor.map { SVGDocumentBuilder.hex($0) } ?? "#111111"
+            return """
+            <text x="\(SVGDocumentBuilder.fmt(element.centerXMM))" y="\(SVGDocumentBuilder.fmt(element.centerYMM))" text-anchor="middle" dominant-baseline="middle" font-size="\(SVGDocumentBuilder.fmt(element.fontSizeMM))" fill="\(fill)" opacity="\(opacity)">\(SVGDocumentBuilder.escape(element.text))</text>
+            """
+        case .image:
+            return ""
+        }
     }
 
     static func writeBlueprint(
@@ -188,6 +264,12 @@ enum EndsheetRenderService {
         sheetSizePoints: CGSize,
         dpi: CGFloat = 150
     ) -> NSImage? {
+        // Prefer layered design document when present.
+        let elements = face.document.orderedElementsForRendering()
+        if !elements.isEmpty {
+            return compositeDocument(elements, size: sheetSizePoints, dpi: dpi)
+        }
+
         switch face.mode {
         case .blank:
             return solidImage(color: CGColor(gray: 1, alpha: 1), size: sheetSizePoints, dpi: dpi)
@@ -201,6 +283,58 @@ enum EndsheetRenderService {
         case .artwork:
             return artworkImage(face.artwork, size: sheetSizePoints, dpi: dpi)
         }
+    }
+
+    private static func compositeDocument(
+        _ elements: [DesignElement],
+        size: CGSize,
+        dpi: CGFloat
+    ) -> NSImage? {
+        let pxW = max(2, Int((size.width * dpi / 72).rounded()))
+        let pxH = max(2, Int((size.height * dpi / 72).rounded()))
+        guard let ctx = CGContext(
+            data: nil,
+            width: pxW,
+            height: pxH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: pxW, height: pxH))
+        let sx = Double(pxW) / max(1, size.width)
+        let sy = Double(pxH) / max(1, size.height)
+        // size is in points; element coords are mm — convert via BindingMath points-per-mm.
+        let mmToPts = BindingMath.points(fromMillimeters: 1)
+        for element in elements {
+            let x = element.xMM * mmToPts * sx
+            let y = element.yMM * mmToPts * sy
+            let w = element.widthMM * mmToPts * sx
+            let h = element.heightMM * mmToPts * sy
+            let rect = CGRect(x: x, y: Double(pxH) - y - h, width: w, height: h)
+            ctx.saveGState()
+            ctx.setAlpha(CGFloat(element.opacity))
+            if let marble = element.fill.marbling,
+               let img = MarbledPaperGenerator.render(
+                   spec: marble,
+                   width: max(2, Int(w.rounded())),
+                   height: max(2, Int(h.rounded()))
+               ) {
+                ctx.draw(img, in: rect)
+            } else if let solid = element.fill.solidColor {
+                ctx.setFillColor(solid.cgColor)
+                ctx.fill(rect)
+            }
+            if let stroke = element.stroke.solidColor, element.strokeWidthMM > 0 {
+                ctx.setStrokeColor(stroke.cgColor)
+                ctx.setLineWidth(CGFloat(element.strokeWidthMM * mmToPts * sx))
+                ctx.stroke(rect)
+            }
+            ctx.restoreGState()
+        }
+        guard let image = ctx.makeImage() else { return nil }
+        return NSImage(cgImage: image, size: size)
     }
 
     /// Crop left (0) or right (1) half of a sheet image into leaf-sized PDF data.
@@ -325,10 +459,12 @@ enum EndsheetExportService {
         project: BinderyProject,
         workspace: BindingWorkspace,
         store: AppStore,
-        isFront: Bool
+        isFront: Bool,
+        mode: SVGDocumentBuilder.ExportMode = .production
     ) {
         let geometry = EndsheetGeometry.resolving(project: project, trimPoints: workspace.job.resolvedTrimSize)
-        let face = isFront ? workspace.job.endpapers.front : workspace.job.endpapers.back
+        var face = isFront ? project.endsheets.front : project.endsheets.back
+        face.ensureDesignDocument(geometry: geometry)
         let panel = NSSavePanel()
         if let svgType = UTType(filenameExtension: "svg") {
             panel.allowedContentTypes = [svgType]
@@ -337,7 +473,8 @@ enum EndsheetExportService {
         }
         panel.canCreateDirectories = true
         let side = isFront ? "front" : "back"
-        panel.nameFieldStringValue = "\(project.title)-endsheet-\(side).svg"
+        let suffix = mode == .clean ? "artwork" : "production"
+        panel.nameFieldStringValue = "\(project.title)-endsheet-\(side)-\(suffix).svg"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
@@ -346,7 +483,8 @@ enum EndsheetExportService {
                 geometry: geometry,
                 isFront: isFront,
                 projectTitle: project.title,
-                to: url
+                to: url,
+                mode: mode
             )
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {

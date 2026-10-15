@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import BookBind
 
@@ -54,6 +55,116 @@ final class CoverDesignTests: XCTestCase {
         XCTAssertEqual(geo.panel(containingWrapX: geo.boardW + geo.hinge + 1), .spine)
         XCTAssertEqual(geo.panel(containingWrapX: 1), .back)
         XCTAssertEqual(geo.totalW, geo.boardW * 2 + geo.midsection, accuracy: 0.01)
+    }
+
+    func testTurnInExpandsMaterialSheetForWrappingArchitecture() {
+        var project = BinderyProject(title: "Turned", heightMM: 297, widthMM: 210)
+        project.architecture = .caseBound
+        project.coverTurnInMM = 15
+        let geo = CoverBlueprintService.Geometry(project: project, spineWidthMM: 28.5)
+
+        XCTAssertTrue(geo.hasTurnIn)
+        XCTAssertEqual(geo.turnInMM, 15, accuracy: 0.001)
+        XCTAssertEqual(geo.materialW, geo.totalW + 30, accuracy: 0.01)
+        XCTAssertEqual(geo.materialH, geo.boardH + 30, accuracy: 0.01)
+        XCTAssertEqual(geo.boardOriginXMM, 15, accuracy: 0.001)
+        XCTAssertEqual(geo.boardOriginYMM, 15, accuracy: 0.001)
+
+        let layout = geo.turnInLayout(foldXsMM: geo.guideXsMM)
+        XCTAssertEqual(layout.materialRect.width, geo.materialW, accuracy: 0.01)
+        XCTAssertEqual(Double(layout.boardRect.minX), 15, accuracy: 0.001)
+        XCTAssertEqual(layout.miterCuts.count, 4)
+    }
+
+    func testTurnInSuppressedForNonWrappingArchitecture() {
+        var project = BinderyProject(title: "Softcover", heightMM: 297, widthMM: 210)
+        project.architecture = .perfectBound
+        project.coverTurnInMM = 15 // ignored — perfect-bound does not wrap boards
+        let geo = CoverBlueprintService.Geometry(project: project, spineWidthMM: 20)
+
+        XCTAssertFalse(geo.hasTurnIn)
+        XCTAssertEqual(project.effectiveTurnInMM, 0, accuracy: 0.001)
+        XCTAssertEqual(geo.materialW, geo.totalW, accuracy: 0.01)
+        XCTAssertEqual(geo.materialH, geo.boardH, accuracy: 0.01)
+    }
+
+    func testLegacyProjectDefaultsTurnInFromArchitecture() throws {
+        let json = """
+        {
+          "id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+          "title": "Legacy Book",
+          "author": "Ada",
+          "heightMM": 229,
+          "widthMM": 152,
+          "architecture": "Case Bound",
+          "createdAt": "2026-01-01T00:00:00Z",
+          "updatedAt": "2026-01-01T00:00:00Z",
+          "boardThicknessMM": 2,
+          "hingeGapMM": 8,
+          "coverMaterial": "Book Cloth",
+          "showFoilLayer": false,
+          "showDebossLayer": false,
+          "folioStampText": "",
+          "materials": [],
+          "textPaperGSM": 80,
+          "estimatedPageCount": 0
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let project = try decoder.decode(BinderyProject.self, from: Data(json.utf8))
+
+        XCTAssertEqual(project.coverTurnInMM, 15, accuracy: 0.001)
+        XCTAssertEqual(project.pastedownInsetMM, 3, accuracy: 0.001)
+    }
+
+    func testInsetPastedownFillsBoardFaceWithRevealBorder() throws {
+        let boardWMM = 152.0
+        let boardHMM = 229.0
+        let dpi: CGFloat = 150
+        let pastedown = Self.solidNSImage(color: .systemBlue, widthPx: 200, heightPx: 300)
+
+        let composed = try XCTUnwrap(CoverWrapTextureService.insetPastedown(
+            pastedown,
+            boardWidthMM: boardWMM,
+            boardHeightMM: boardHMM,
+            insetMM: 3,
+            material: .bookCloth,
+            dpi: dpi
+        ))
+        let cg = try XCTUnwrap(composed.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let expectedW = Int(ceil(boardWMM * Double(dpi) / 25.4))
+        let expectedH = Int(ceil(boardHMM * Double(dpi) / 25.4))
+        XCTAssertEqual(cg.width, expectedW)
+        XCTAssertEqual(cg.height, expectedH)
+
+        // Zero inset returns the original pastedown untouched.
+        let untouched = CoverWrapTextureService.insetPastedown(
+            pastedown,
+            boardWidthMM: boardWMM,
+            boardHeightMM: boardHMM,
+            insetMM: 0,
+            material: .bookCloth,
+            dpi: dpi
+        )
+        XCTAssertEqual(untouched?.size, pastedown.size)
+    }
+
+    private static func solidNSImage(color: NSColor, widthPx: Int, heightPx: Int) -> NSImage {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let ctx = CGContext(
+            data: nil,
+            width: widthPx,
+            height: heightPx,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        ctx.setFillColor(color.cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: widthPx, height: heightPx))
+        let cg = ctx.makeImage()!
+        return NSImage(cgImage: cg, size: NSSize(width: widthPx, height: heightPx))
     }
 
     func testMigratePanelLocalCoordinatesToWrapAbsolute() {

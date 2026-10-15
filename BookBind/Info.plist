@@ -14,6 +14,8 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key>
+	<string>InABind</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -25,7 +27,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 BookBind</string>
+	<string>Copyright © 2026 InABind</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>CFBundleDocumentTypes</key>

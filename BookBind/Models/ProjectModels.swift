@@ -30,15 +30,26 @@ enum BindingArchitecture: String, CaseIterable, Identifiable, Codable {
     var coverDefaults: CoverMeasurementDefaults {
         switch self {
         case .caseBound:
-            return CoverMeasurementDefaults(boardThicknessMM: 2.0, hingeGapMM: 8.0, textPaperGSM: 80)
+            return CoverMeasurementDefaults(boardThicknessMM: 2.0, hingeGapMM: 8.0, textPaperGSM: 80, turnInMM: 15)
         case .sectionSewn:
-            return CoverMeasurementDefaults(boardThicknessMM: 0.6, hingeGapMM: 4.0, textPaperGSM: 80)
+            return CoverMeasurementDefaults(boardThicknessMM: 0.6, hingeGapMM: 4.0, textPaperGSM: 80, turnInMM: 15)
         case .perfectBound:
-            return CoverMeasurementDefaults(boardThicknessMM: 0.35, hingeGapMM: 0, textPaperGSM: 80)
+            return CoverMeasurementDefaults(boardThicknessMM: 0.35, hingeGapMM: 0, textPaperGSM: 80, turnInMM: 0)
         case .coptic:
-            return CoverMeasurementDefaults(boardThicknessMM: 0, hingeGapMM: 0, textPaperGSM: 80)
+            return CoverMeasurementDefaults(boardThicknessMM: 0, hingeGapMM: 0, textPaperGSM: 80, turnInMM: 12)
         case .saddleStitch:
-            return CoverMeasurementDefaults(boardThicknessMM: 0.25, hingeGapMM: 0, textPaperGSM: 90)
+            return CoverMeasurementDefaults(boardThicknessMM: 0.25, hingeGapMM: 0, textPaperGSM: 90, turnInMM: 0)
+        }
+    }
+
+    /// Whether the covering material wraps the board edges and folds to the inside
+    /// (turn-ins). Soft square-back wraps and pamphlets do not.
+    var wrapsTurnIn: Bool {
+        switch self {
+        case .caseBound, .sectionSewn, .coptic:
+            return true
+        case .perfectBound, .saddleStitch:
+            return false
         }
     }
 }
@@ -48,6 +59,8 @@ struct CoverMeasurementDefaults: Equatable {
     var boardThicknessMM: Double
     var hingeGapMM: Double
     var textPaperGSM: Double
+    /// Covering-material overhang folded around each board edge onto the inside.
+    var turnInMM: Double
 }
 
 /// A cover/spine material option for the designer.
@@ -348,37 +361,7 @@ extension CoverStrokeStyle: Codable {
     }
 }
 
-/// Named stack layer in the cover editor (visibility / lock / ordering group).
-struct CoverDesignLayer: Identifiable, Equatable, Codable, Hashable {
-    var id: UUID
-    var name: String
-    var isVisible: Bool
-    /// Locked layers render but their elements can't be selected or moved.
-    var isLocked: Bool
-    var zIndex: Int
-
-    init(id: UUID = UUID(), name: String, isVisible: Bool = true, isLocked: Bool = false, zIndex: Int = 0) {
-        self.id = id
-        self.name = name
-        self.isVisible = isVisible
-        self.isLocked = isLocked
-        self.zIndex = zIndex
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
-        isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
-        zIndex = try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
-    }
-
-    /// Minimal starting stack — a single working layer; users add more as needed.
-    static func defaults() -> [CoverDesignLayer] {
-        [CoverDesignLayer(name: "Layer 1", zIndex: 0)]
-    }
-}
+// CoverDesignLayer is a typealias of DesignLayer (see DesignDocumentModels.swift).
 
 /// Placed cover-wrap element (text stamp or image).
 struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
@@ -399,6 +382,8 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
     var layer: CoverElementLayer
     var fontStyle: CoverFontStyle
     var designLayerID: UUID
+    /// Optional group membership for multi-element transforms.
+    var groupID: UUID?
     var opacity: Double
     var isVisible: Bool
     /// Coordinates are absolute across the back→front wrap.
@@ -415,9 +400,9 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
     var dashLengthScale: Double
     /// Scales dash/dot gaps (1 = default). Ignored unless ornament uses dashes.
     var dashGapScale: Double
-    /// Shape stroke paint — `.none` or `.solid` (defaults to finish color for legacy).
+    /// Shape stroke paint — `.none`, `.solid`, or `.marbled`.
     var stroke: CoverPaint
-    /// Shape fill — `.none` or `.solid`; reserved for gradients / patterns later.
+    /// Shape fill — `.none`, `.solid`, or regeneratable `.marbled`.
     var fill: CoverPaint
     var imageBookmarkData: Data?
     var imagePathHint: String?
@@ -458,6 +443,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         layer: CoverElementLayer = .ink,
         fontStyle: CoverFontStyle = .body,
         designLayerID: UUID,
+        groupID: UUID? = nil,
         opacity: Double = 1,
         isVisible: Bool = true,
         usesWrapCoordinates: Bool = true,
@@ -487,6 +473,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         self.layer = layer
         self.fontStyle = fontStyle
         self.designLayerID = designLayerID
+        self.groupID = groupID
         self.opacity = opacity
         self.isVisible = isVisible
         self.usesWrapCoordinates = usesWrapCoordinates
@@ -506,7 +493,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, panel, text, xMM, yMM, widthMM, heightMM, fontSizeMM
-        case rotationDegrees, layer, fontStyle, designLayerID, opacity, isVisible
+        case rotationDegrees, layer, fontStyle, designLayerID, groupID, opacity, isVisible
         case usesWrapCoordinates, isPanelLocked, shapeType, strokeWidthMM, strokeStyle
         case ornamentPattern, dashLengthScale, dashGapScale, stroke, fill, isFilled
         case imageBookmarkData, imagePathHint, imageName
@@ -527,6 +514,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         layer = try container.decodeIfPresent(CoverElementLayer.self, forKey: .layer) ?? .ink
         fontStyle = try container.decodeIfPresent(CoverFontStyle.self, forKey: .fontStyle) ?? .body
         designLayerID = try container.decodeIfPresent(UUID.self, forKey: .designLayerID) ?? UUID()
+        groupID = try container.decodeIfPresent(UUID.self, forKey: .groupID)
         opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
         isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
         // Legacy elements were panel-local and implicitly locked to a panel.
@@ -579,6 +567,7 @@ struct CoverDesignElement: Identifiable, Equatable, Codable, Hashable {
         try container.encode(layer, forKey: .layer)
         try container.encode(fontStyle, forKey: .fontStyle)
         try container.encode(designLayerID, forKey: .designLayerID)
+        try container.encodeIfPresent(groupID, forKey: .groupID)
         try container.encode(opacity, forKey: .opacity)
         try container.encode(isVisible, forKey: .isVisible)
         try container.encode(usesWrapCoordinates, forKey: .usesWrapCoordinates)
@@ -737,6 +726,12 @@ struct BinderyProject: Identifiable, Equatable, Codable {
     /// Board / cover blueprinting (mm).
     var boardThicknessMM: Double
     var hingeGapMM: Double
+    /// Covering-material overhang folded around each board edge onto the inside (mm).
+    /// Only meaningful for board-wrapping architectures (`architecture.wrapsTurnIn`).
+    var coverTurnInMM: Double
+    /// Reveal (mm): how far the pastedown stops short of the board edge, leaving a
+    /// visible border of the cover turn-in on the inside of each board.
+    var pastedownInsetMM: Double
     /// Manual spine midsection width. `nil` follows the computed case-spine width.
     var spineWidthOverrideMM: Double?
     var coverMaterial: CoverMaterial
@@ -752,6 +747,9 @@ struct BinderyProject: Identifiable, Equatable, Codable {
 
     /// Folded endsheet designs (front/back). Synced with `BindingJob.endpapers` for bind.
     var endsheets: EndpaperDesign
+
+    /// Bleed, safe area, corner cuts, relief cuts, and guide visibility for cover production.
+    var coverProduction: CoverProductionSpec
 
     var materials: [MaterialEntry]
 
@@ -774,6 +772,8 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         updatedAt: Date = Date(),
         boardThicknessMM: Double = 2.0,
         hingeGapMM: Double = 8.0,
+        coverTurnInMM: Double = 15.0,
+        pastedownInsetMM: Double = 3.0,
         spineWidthOverrideMM: Double? = nil,
         coverMaterial: CoverMaterial = .bookCloth,
         showFoilLayer: Bool = false,
@@ -783,6 +783,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         activeCoverLayerID: UUID? = nil,
         coverElements: [CoverDesignElement] = [],
         endsheets: EndpaperDesign = EndpaperDesign(),
+        coverProduction: CoverProductionSpec = .default,
         materials: [MaterialEntry] = [],
         textPaperGSM: Double = 80,
         estimatedPageCount: Int = 0,
@@ -798,6 +799,8 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         self.updatedAt = updatedAt
         self.boardThicknessMM = boardThicknessMM
         self.hingeGapMM = hingeGapMM
+        self.coverTurnInMM = max(0, coverTurnInMM)
+        self.pastedownInsetMM = max(0, pastedownInsetMM)
         self.spineWidthOverrideMM = spineWidthOverrideMM
         self.coverMaterial = coverMaterial
         self.showFoilLayer = showFoilLayer
@@ -807,6 +810,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         self.activeCoverLayerID = activeCoverLayerID
         self.coverElements = coverElements
         self.endsheets = endsheets
+        self.coverProduction = coverProduction
         self.materials = materials
         self.textPaperGSM = textPaperGSM
         self.estimatedPageCount = estimatedPageCount
@@ -825,6 +829,10 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         boardThicknessMM = try container.decode(Double.self, forKey: .boardThicknessMM)
         hingeGapMM = try container.decode(Double.self, forKey: .hingeGapMM)
+        let decodedArchitecture = architecture
+        coverTurnInMM = try container.decodeIfPresent(Double.self, forKey: .coverTurnInMM)
+            ?? decodedArchitecture.coverDefaults.turnInMM
+        pastedownInsetMM = try container.decodeIfPresent(Double.self, forKey: .pastedownInsetMM) ?? 3.0
         spineWidthOverrideMM = try container.decodeIfPresent(Double.self, forKey: .spineWidthOverrideMM)
         coverMaterial = try container.decode(CoverMaterial.self, forKey: .coverMaterial)
         showFoilLayer = try container.decode(Bool.self, forKey: .showFoilLayer)
@@ -834,6 +842,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         activeCoverLayerID = try container.decodeIfPresent(UUID.self, forKey: .activeCoverLayerID)
         coverElements = try container.decodeIfPresent([CoverDesignElement].self, forKey: .coverElements) ?? []
         endsheets = try container.decodeIfPresent(EndpaperDesign.self, forKey: .endsheets) ?? EndpaperDesign()
+        coverProduction = try container.decodeIfPresent(CoverProductionSpec.self, forKey: .coverProduction) ?? .default
         materials = try container.decode([MaterialEntry].self, forKey: .materials)
         textPaperGSM = try container.decode(Double.self, forKey: .textPaperGSM)
         estimatedPageCount = try container.decode(Int.self, forKey: .estimatedPageCount)
@@ -841,6 +850,11 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         enabledTools = Set(tools ?? Array(ProjectTool.allCases))
         if enabledTools.isEmpty {
             enabledTools = Set(ProjectTool.allCases)
+        }
+        // Migrate pre-Preview full masterworks: unlock Preview when all prior tools are present.
+        let prePreviewFull: Set<ProjectTool> = [.imposition, .cover, .endpapers, .materials]
+        if prePreviewFull.isSubset(of: enabledTools) {
+            enabledTools.insert(.preview)
         }
     }
 
@@ -856,6 +870,8 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(boardThicknessMM, forKey: .boardThicknessMM)
         try container.encode(hingeGapMM, forKey: .hingeGapMM)
+        try container.encode(coverTurnInMM, forKey: .coverTurnInMM)
+        try container.encode(pastedownInsetMM, forKey: .pastedownInsetMM)
         try container.encodeIfPresent(spineWidthOverrideMM, forKey: .spineWidthOverrideMM)
         try container.encode(coverMaterial, forKey: .coverMaterial)
         try container.encode(showFoilLayer, forKey: .showFoilLayer)
@@ -865,6 +881,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         try container.encodeIfPresent(activeCoverLayerID, forKey: .activeCoverLayerID)
         try container.encode(coverElements, forKey: .coverElements)
         try container.encode(endsheets, forKey: .endsheets)
+        try container.encode(coverProduction, forKey: .coverProduction)
         try container.encode(materials, forKey: .materials)
         try container.encode(textPaperGSM, forKey: .textPaperGSM)
         try container.encode(estimatedPageCount, forKey: .estimatedPageCount)
@@ -875,10 +892,16 @@ struct BinderyProject: Identifiable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, author, heightMM, widthMM, architecture
         case createdAt, updatedAt
-        case boardThicknessMM, hingeGapMM, spineWidthOverrideMM, coverMaterial
+        case boardThicknessMM, hingeGapMM, coverTurnInMM, pastedownInsetMM, spineWidthOverrideMM, coverMaterial
         case showFoilLayer, showDebossLayer, folioStampText
-        case coverDesignLayers, activeCoverLayerID, coverElements, endsheets
+        case coverDesignLayers, activeCoverLayerID, coverElements, endsheets, coverProduction
         case materials, textPaperGSM, estimatedPageCount, enabledTools
+    }
+
+    /// Cover turn-in actually applied in layout: zero for architectures whose
+    /// covering material does not fold over the board edges.
+    var effectiveTurnInMM: Double {
+        architecture.wrapsTurnIn ? max(0, coverTurnInMM) : 0
     }
 
     /// Spine midsection used for layout: the manual override when set, else the computed width for `architecture`.
@@ -901,6 +924,7 @@ struct BinderyProject: Identifiable, Equatable, Codable {
         let defaults = architecture.coverDefaults
         boardThicknessMM = defaults.boardThicknessMM
         hingeGapMM = defaults.hingeGapMM
+        coverTurnInMM = defaults.turnInMM
         if let overrideGSM {
             textPaperGSM = overrideGSM
         } else {
@@ -1124,15 +1148,20 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
     case imposition
     case cover
     case endpapers
+    case preview
     case materials
 
     var id: String { rawValue }
+
+    /// Whether the tool has a trailing inspector (and so shows the inspector toggle).
+    var hasInspector: Bool { self != .materials }
 
     var title: String {
         switch self {
         case .imposition: return "Imposition"
         case .cover: return "Cover"
         case .endpapers: return "Endpapers"
+        case .preview: return "Preview"
         case .materials: return "Materials"
         }
     }
@@ -1142,6 +1171,7 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
         case .imposition: return "rectangle.split.2x1"
         case .cover: return "book.closed"
         case .endpapers: return "doc.on.doc"
+        case .preview: return "cube"
         case .materials: return "list.bullet.clipboard"
         }
     }
@@ -1154,6 +1184,8 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
             return "SVG cover & spine editor — boards, grooves, foil and deboss."
         case .endpapers:
             return "Folded endsheet artboard — pastedown, flyleaf, and flat-sheet export."
+        case .preview:
+            return "Interactive 3D book — cover art, spine, and endpapers assembled together."
         case .materials:
             return "Inventory tied to this project’s requirements."
         }
@@ -1165,6 +1197,7 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
         case .imposition: return "signature layout"
         case .cover: return "cover"
         case .endpapers: return "endpapers"
+        case .preview: return "3D preview"
         case .materials: return "materials"
         }
     }
@@ -1182,7 +1215,6 @@ enum ProjectTool: String, CaseIterable, Identifiable, Hashable, Codable {
 enum GlobalDestination: String, CaseIterable, Identifiable, Hashable {
     case home
     case calculators
-    case settings
     case support
 
     var id: String { rawValue }
@@ -1191,8 +1223,7 @@ enum GlobalDestination: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .home: return "Home"
         case .calculators: return "Calculators"
-        case .settings: return "Settings"
-        case .support: return "Support"
+        case .support: return "Guides"
         }
     }
 
@@ -1200,8 +1231,7 @@ enum GlobalDestination: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .home: return "house"
         case .calculators: return "function"
-        case .settings: return "gearshape"
-        case .support: return "questionmark.circle"
+        case .support: return "book.pages"
         }
     }
 }

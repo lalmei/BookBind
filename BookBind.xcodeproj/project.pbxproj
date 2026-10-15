@@ -10,6 +10,12 @@
 		C8742F47876B45088F1EB54C /* EndsheetExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F549DA4CB464B65B2E318C2 /* EndsheetExportService.swift */; };
 		BBAC338024BF44908BF64BFA /* EndsheetDesignerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991A0B9B2C4E4E6A948E364E /* EndsheetDesignerView.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D4E5F6A7B8C9D0E1F2A3B4C5 /* Assets.xcassets */; };
+		A3D20001B00DF1C000000001 /* PhysicalBookDimensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D10001B00DF1C000000001 /* PhysicalBookDimensions.swift */; };
+		A3D20002B00DF1C000000002 /* CoverWrapTextureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D10002B00DF1C000000002 /* CoverWrapTextureService.swift */; };
+		A3D20003B00DF1C000000003 /* BookPreview3DBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D10003B00DF1C000000003 /* BookPreview3DBuilder.swift */; };
+		A3D20004B00DF1C000000004 /* BookPreview3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D10004B00DF1C000000004 /* BookPreview3DView.swift */; };
+		A3D20005B00DF1C000000005 /* BookPreviewWorkbenchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D10005B00DF1C000000005 /* BookPreviewWorkbenchView.swift */; };
+		A3D20006B00DF1C000000006 /* PhysicalBookDimensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D10006B00DF1C000000006 /* PhysicalBookDimensionsTests.swift */; };
 		006CA3DED4344E30DA4B7C1B /* AssetLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DFED920065BBF5DECAD3E5 /* AssetLibraryService.swift */; };
 		0375CBC0D8532FEBB02F35EF /* StrokeDashControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56B4884FF79036AE8C68CF04 /* StrokeDashControls.swift */; };
 		1588E5733D64FDBE80FCEC78 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6049A48AE4E9DCEDC62C6828 /* AppShellView.swift */; };
@@ -57,6 +63,38 @@
 		F63AAEBD123E23AEC84785F8 /* DesignPaint.swift in Sources */ = {isa = PBXBuildFile; fileRef = E218EDEDEA3F90D5344115D4 /* DesignPaint.swift */; };
 		FBA28ABA58B9029B8B1E1BC5 /* CoverInspectorFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31186DC2E88708B9D06A05F /* CoverInspectorFields.swift */; };
 		FF53CC300C9BA15E25A1C6B9 /* DesignCanvasTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFCA40576F1408F4D2516C31 /* DesignCanvasTool.swift */; };
+		B4D20001GUIDE0000000001 /* CoverGuideModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10001GUIDE0000000001 /* CoverGuideModels.swift */; };
+		B4D20002DESIGN0000000001 /* DesignDocumentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10002DESIGN0000000001 /* DesignDocumentModels.swift */; };
+		B4D20003MATH00000000001 /* DesignEditorMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10003MATH00000000001 /* DesignEditorMath.swift */; };
+		B4D20004SVG000000000001 /* SVGDocumentBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10004SVG000000000001 /* SVGDocumentBuilder.swift */; };
+		B4D20005MARB00000000001 /* MarblingInspectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10005MARB00000000001 /* MarblingInspectorControls.swift */; };
+		B4D20006TEST00000000001 /* DesignEditorUnificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10006TEST00000000001 /* DesignEditorUnificationTests.swift */; };
+		B4D20007OPS000000000001 /* MarblingOperationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10007OPS000000000001 /* MarblingOperationModels.swift */; };
+		B4D20008CTRL00000000001 /* MarblingCompositionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10008CTRL00000000001 /* MarblingCompositionController.swift */; };
+		B4D20009RECIPE0000000001 /* MarblingRecipes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D10009RECIPE0000000001 /* MarblingRecipes.swift */; };
+		B4D2000AEDITOR0000000001 /* MarblingEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D1000AEDITOR0000000001 /* MarblingEditorView.swift */; };
+		B4D2000BTEST00000000002 /* MarblingEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D1000BTEST00000000002 /* MarblingEditorTests.swift */; };
+		C41CBSRV1000000000000000 /* CalculatorMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41CFSRV1000000000000000 /* CalculatorMath.swift */; };
+		C41CBSRV2000000000000000 /* SewingTemplateExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41CFSRV2000000000000000 /* SewingTemplateExporter.swift */; };
+		C41CBVM01000000000000000 /* CalculatorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41CFVM01000000000000000 /* CalculatorSession.swift */; };
+		C41CBVW01000000000000000 /* BlueprintCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41CFVW01000000000000000 /* BlueprintCanvas.swift */; };
+		C41CBVW02000000000000000 /* CalculatorDrawings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41CFVW02000000000000000 /* CalculatorDrawings.swift */; };
+		C41CBTST1000000000000000 /* CalculatorMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41CFTST1000000000000000 /* CalculatorMathTests.swift */; };
+		C41DBMDL1000000000000000 /* ProjectKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41DFMDL1000000000000000 /* ProjectKind.swift */; };
+		C41DBHOM1000000000000000 /* NewMasterworkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41DFHOM1000000000000000 /* NewMasterworkSheet.swift */; };
+		C41DBHOM2000000000000000 /* ProjectKindIllustration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41DFHOM2000000000000000 /* ProjectKindIllustration.swift */; };
+		C41DBTST2000000000000000 /* ProjectKindTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41DFTST2000000000000000 /* ProjectKindTests.swift */; };
+		C41EBTST3000000000000000 /* AutoBindTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41EFTST3000000000000000 /* AutoBindTests.swift */; };
+		C5MEX1B00000000000000000 /* MeasurementExpression.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5MEX1F00000000000000000 /* MeasurementExpression.swift */; };
+		C5MXT1B00000000000000000 /* MeasurementExpressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5MXT1F00000000000000000 /* MeasurementExpressionTests.swift */; };
+		C5PMK1B00000000000000000 /* PrinterMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5PMK1F00000000000000000 /* PrinterMarks.swift */; };
+		C5PMT1B00000000000000000 /* PrinterMarksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5PMT1F00000000000000000 /* PrinterMarksTests.swift */; };
+		C5PRF1B00000000000000000 /* PreflightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5PRF1F00000000000000000 /* PreflightService.swift */; };
+		C5PRB1B00000000000000000 /* PreflightButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5PRB1F00000000000000000 /* PreflightButton.swift */; };
+		C5PRT1B00000000000000000 /* PreflightServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5PRT1F00000000000000000 /* PreflightServiceTests.swift */; };
+		C5ASE1B00000000000000000 /* ASESwatchFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5ASE1F00000000000000000 /* ASESwatchFile.swift */; };
+		C5SWS1B00000000000000000 /* SwatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5SWS1F00000000000000000 /* SwatchStore.swift */; };
+		C5AST1B00000000000000000 /* ASESwatchFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5AST1F00000000000000000 /* ASESwatchFileTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +109,12 @@
 
 /* Begin PBXFileReference section */
 		D4E5F6A7B8C9D0E1F2A3B4C5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A3D10001B00DF1C000000001 /* PhysicalBookDimensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalBookDimensions.swift; sourceTree = "<group>"; };
+		A3D10002B00DF1C000000002 /* CoverWrapTextureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverWrapTextureService.swift; sourceTree = "<group>"; };
+		A3D10003B00DF1C000000003 /* BookPreview3DBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreview3DBuilder.swift; sourceTree = "<group>"; };
+		A3D10004B00DF1C000000004 /* BookPreview3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreview3DView.swift; sourceTree = "<group>"; };
+		A3D10005B00DF1C000000005 /* BookPreviewWorkbenchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewWorkbenchView.swift; sourceTree = "<group>"; };
+		A3D10006B00DF1C000000006 /* PhysicalBookDimensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalBookDimensionsTests.swift; sourceTree = "<group>"; };
 		00E781AF545913F6A0F0B432 /* AngleControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AngleControl.swift; sourceTree = "<group>"; };
 		0107362550F8D2B282047A69 /* CoverScrollZoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverScrollZoomView.swift; sourceTree = "<group>"; };
 		013E5A8268207F96B47911B9 /* BindingMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingMath.swift; sourceTree = "<group>"; };
@@ -122,6 +166,38 @@
 		F9D1537890FD10D38714D3C0 /* EndpaperMarbleThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpaperMarbleThumbnail.swift; sourceTree = "<group>"; };
 		FE34D7D18B77F0C5CBACC791 /* CalculatorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculatorsView.swift; sourceTree = "<group>"; };
 		FFCA40576F1408F4D2516C31 /* DesignCanvasTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignCanvasTool.swift; sourceTree = "<group>"; };
+		B4D10001GUIDE0000000001 /* CoverGuideModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverGuideModels.swift; sourceTree = "<group>"; };
+		B4D10002DESIGN0000000001 /* DesignDocumentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignDocumentModels.swift; sourceTree = "<group>"; };
+		B4D10003MATH00000000001 /* DesignEditorMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignEditorMath.swift; sourceTree = "<group>"; };
+		B4D10004SVG000000000001 /* SVGDocumentBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVGDocumentBuilder.swift; sourceTree = "<group>"; };
+		B4D10005MARB00000000001 /* MarblingInspectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarblingInspectorControls.swift; sourceTree = "<group>"; };
+		B4D10006TEST00000000001 /* DesignEditorUnificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignEditorUnificationTests.swift; sourceTree = "<group>"; };
+		B4D10007OPS000000000001 /* MarblingOperationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarblingOperationModels.swift; sourceTree = "<group>"; };
+		B4D10008CTRL00000000001 /* MarblingCompositionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarblingCompositionController.swift; sourceTree = "<group>"; };
+		B4D10009RECIPE0000000001 /* MarblingRecipes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarblingRecipes.swift; sourceTree = "<group>"; };
+		B4D1000AEDITOR0000000001 /* MarblingEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarblingEditorView.swift; sourceTree = "<group>"; };
+		B4D1000BTEST00000000002 /* MarblingEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarblingEditorTests.swift; sourceTree = "<group>"; };
+		C41CFSRV1000000000000000 /* CalculatorMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculatorMath.swift; sourceTree = "<group>"; };
+		C41CFSRV2000000000000000 /* SewingTemplateExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SewingTemplateExporter.swift; sourceTree = "<group>"; };
+		C41CFVM01000000000000000 /* CalculatorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculatorSession.swift; sourceTree = "<group>"; };
+		C41CFVW01000000000000000 /* BlueprintCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlueprintCanvas.swift; sourceTree = "<group>"; };
+		C41CFVW02000000000000000 /* CalculatorDrawings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculatorDrawings.swift; sourceTree = "<group>"; };
+		C41CFTST1000000000000000 /* CalculatorMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculatorMathTests.swift; sourceTree = "<group>"; };
+		C41DFMDL1000000000000000 /* ProjectKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectKind.swift; sourceTree = "<group>"; };
+		C41DFHOM1000000000000000 /* NewMasterworkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewMasterworkSheet.swift; sourceTree = "<group>"; };
+		C41DFHOM2000000000000000 /* ProjectKindIllustration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectKindIllustration.swift; sourceTree = "<group>"; };
+		C41DFTST2000000000000000 /* ProjectKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectKindTests.swift; sourceTree = "<group>"; };
+		C41EFTST3000000000000000 /* AutoBindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoBindTests.swift; sourceTree = "<group>"; };
+		C5MEX1F00000000000000000 /* MeasurementExpression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementExpression.swift; sourceTree = "<group>"; };
+		C5MXT1F00000000000000000 /* MeasurementExpressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementExpressionTests.swift; sourceTree = "<group>"; };
+		C5PMK1F00000000000000000 /* PrinterMarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterMarks.swift; sourceTree = "<group>"; };
+		C5PMT1F00000000000000000 /* PrinterMarksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterMarksTests.swift; sourceTree = "<group>"; };
+		C5PRF1F00000000000000000 /* PreflightService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightService.swift; sourceTree = "<group>"; };
+		C5PRB1F00000000000000000 /* PreflightButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightButton.swift; sourceTree = "<group>"; };
+		C5PRT1F00000000000000000 /* PreflightServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightServiceTests.swift; sourceTree = "<group>"; };
+		C5ASE1F00000000000000000 /* ASESwatchFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ASESwatchFile.swift; sourceTree = "<group>"; };
+		C5SWS1F00000000000000000 /* SwatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwatchStore.swift; sourceTree = "<group>"; };
+		C5AST1F00000000000000000 /* ASESwatchFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ASESwatchFileTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -129,6 +205,8 @@
 			isa = PBXGroup;
 			children = (
 				01D7CEE2705F00063C43E832 /* AppStore.swift */,
+				C5SWS1F00000000000000000 /* SwatchStore.swift */,
+				C41CFVM01000000000000000 /* CalculatorSession.swift */,
 				BAC5A18BE152FEC9067F1DC3 /* BindingWorkspace.swift */,
 			);
 			path = ViewModels;
@@ -177,6 +255,7 @@
 		831D6D50B05FB704EA2FE7D2 /* DesignEditor */ = {
 			isa = PBXGroup;
 			children = (
+				B4D10005MARB00000000001 /* MarblingInspectorControls.swift */,
 				00E781AF545913F6A0F0B432 /* AngleControl.swift */,
 				A31186DC2E88708B9D06A05F /* CoverInspectorFields.swift */,
 				4B52074E8267F433BC358BBC /* CoverShapeElementView.swift */,
@@ -208,6 +287,8 @@
 			isa = PBXGroup;
 			children = (
 				FE34D7D18B77F0C5CBACC791 /* CalculatorsView.swift */,
+				C41CFVW02000000000000000 /* CalculatorDrawings.swift */,
+				C41CFVW01000000000000000 /* BlueprintCanvas.swift */,
 			);
 			path = Calculators;
 			sourceTree = "<group>";
@@ -215,10 +296,14 @@
 		B52BC8F22F8A1522A73CCCFF /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				B4D10001GUIDE0000000001 /* CoverGuideModels.swift */,
+				B4D10002DESIGN0000000001 /* DesignDocumentModels.swift */,
 				EF66181627B85E08C9DE8854 /* BindingModels.swift */,
 				E218EDEDEA3F90D5344115D4 /* DesignPaint.swift */,
 				380B0B211C5E7663FA595B77 /* EndpaperModels.swift */,
+				B4D10007OPS000000000001 /* MarblingOperationModels.swift */,
 				71A61CCA766A1EB4484D827F /* ProjectModels.swift */,
+				C41DFMDL1000000000000000 /* ProjectKind.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -242,10 +327,20 @@
 		CB724BE7777D7D1826D31B91 /* BookBindTests */ = {
 			isa = PBXGroup;
 			children = (
+				B4D10006TEST00000000001 /* DesignEditorUnificationTests.swift */,
 				524ABF362D870D95E449341E /* AssetLibraryTests.swift */,
 				7D028C415983EE40DB59E06F /* BindingMathTests.swift */,
+				C5AST1F00000000000000000 /* ASESwatchFileTests.swift */,
+				C5PRT1F00000000000000000 /* PreflightServiceTests.swift */,
+				C5PMT1F00000000000000000 /* PrinterMarksTests.swift */,
+				C5MXT1F00000000000000000 /* MeasurementExpressionTests.swift */,
+				C41EFTST3000000000000000 /* AutoBindTests.swift */,
+				C41DFTST2000000000000000 /* ProjectKindTests.swift */,
+				C41CFTST1000000000000000 /* CalculatorMathTests.swift */,
 				701521F39F6405D7D1BAB7D8 /* CoverDesignTests.swift */,
+				A3D10006B00DF1C000000006 /* PhysicalBookDimensionsTests.swift */,
 				15464D956CF6850A89E68C11 /* EndpaperMarblingTests.swift */,
+				B4D1000BTEST00000000002 /* MarblingEditorTests.swift */,
 				6B03922E451EFAD255E4B181 /* ImpositionTests.swift */,
 				F9BECBFF284E32EBAE913099 /* PDFRenderTests.swift */,
 				90B3FBAB0DAEED0B42875529 /* PersistenceAndAssemblyTests.swift */,
@@ -256,14 +351,18 @@
 		D6F00F7560417A2DBB7F6CB4 /* Workbench */ = {
 			isa = PBXGroup;
 			children = (
+				A3D10005B00DF1C000000005 /* BookPreviewWorkbenchView.swift */,
+				A3D10004B00DF1C000000004 /* BookPreview3DView.swift */,
 				53A377B2BBB404F194C12F27 /* CoverDesignerView.swift */,
 				0107362550F8D2B282047A69 /* CoverScrollZoomView.swift */,
 				DAEE3930DCA83EC218925EB0 /* EndpaperDesignerView.swift */,
+				B4D1000AEDITOR0000000001 /* MarblingEditorView.swift */,
 				991A0B9B2C4E4E6A948E364E /* EndsheetDesignerView.swift */,
 				F9D1537890FD10D38714D3C0 /* EndpaperMarbleThumbnail.swift */,
 				BD0C0FF225F8012303EDA91F /* ImpositionWorkbenchView.swift */,
 				E60FC373E63F88F7E6251E15 /* MaterialsLogView.swift */,
 				B4C26334CF3618738B377C99 /* ProjectWorkbenchView.swift */,
+				C5PRB1F00000000000000000 /* PreflightButton.swift */,
 				09893CFDB26788B629D473DC /* WorkbenchInspectorChrome.swift */,
 			);
 			path = Workbench;
@@ -273,6 +372,8 @@
 			isa = PBXGroup;
 			children = (
 				F50361AFCA0832A0038ECB8D /* HomeView.swift */,
+				C41DFHOM2000000000000000 /* ProjectKindIllustration.swift */,
+				C41DFHOM1000000000000000 /* NewMasterworkSheet.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -280,16 +381,29 @@
 		E658B140BE9A3B7418C16919 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				B4D10003MATH00000000001 /* DesignEditorMath.swift */,
+				B4D10004SVG000000000001 /* SVGDocumentBuilder.swift */,
 				A7DFED920065BBF5DECAD3E5 /* AssetLibraryService.swift */,
 				013E5A8268207F96B47911B9 /* BindingMath.swift */,
+				C5ASE1F00000000000000000 /* ASESwatchFile.swift */,
+				C5PRF1F00000000000000000 /* PreflightService.swift */,
+				C5PMK1F00000000000000000 /* PrinterMarks.swift */,
+				C5MEX1F00000000000000000 /* MeasurementExpression.swift */,
+				C41CFSRV2000000000000000 /* SewingTemplateExporter.swift */,
+				C41CFSRV1000000000000000 /* CalculatorMath.swift */,
+				A3D10003B00DF1C000000003 /* BookPreview3DBuilder.swift */,
 				4036A92023112FE6E1CBB362 /* CoverBlueprintService.swift */,
+				A3D10002B00DF1C000000002 /* CoverWrapTextureService.swift */,
 				5F549DA4CB464B65B2E318C2 /* EndsheetExportService.swift */,
 				C80F8791BC7622F4A8E3AD8C /* CoverEditorMath.swift */,
 				67F53C094760E197C4C4E4A7 /* ImpositionService.swift */,
 				7C9C6776596DD89059C27C85 /* MarbledPaperGenerator.swift */,
+				B4D10008CTRL00000000001 /* MarblingCompositionController.swift */,
+				B4D10009RECIPE0000000001 /* MarblingRecipes.swift */,
 				9D5725EB8A66CB82DB2A6BA6 /* PageDecorationService.swift */,
 				9E4EA5601D8889DF073F939F /* PDFDocumentService.swift */,
 				607882B0072D3B0091850505 /* PDFPageDrawing.swift */,
+				A3D10001B00DF1C000000001 /* PhysicalBookDimensions.swift */,
 				E909255AAE59171F85F4D61A /* ProjectStore.swift */,
 			);
 			path = Services;
@@ -383,11 +497,21 @@
 			files = (
 				516A19FADF7434F0CC24D433 /* AssetLibraryTests.swift in Sources */,
 				4083E32BCD22F5E15B72F278 /* BindingMathTests.swift in Sources */,
+				C5AST1B00000000000000000 /* ASESwatchFileTests.swift in Sources */,
+				C5PRT1B00000000000000000 /* PreflightServiceTests.swift in Sources */,
+				C5PMT1B00000000000000000 /* PrinterMarksTests.swift in Sources */,
+				C5MXT1B00000000000000000 /* MeasurementExpressionTests.swift in Sources */,
+				C41EBTST3000000000000000 /* AutoBindTests.swift in Sources */,
+				C41DBTST2000000000000000 /* ProjectKindTests.swift in Sources */,
+				C41CBTST1000000000000000 /* CalculatorMathTests.swift in Sources */,
 				A7D4947CBEBAE1A0DDD841FA /* CoverDesignTests.swift in Sources */,
 				AACA8DEF697EC52AB9194BF9 /* EndpaperMarblingTests.swift in Sources */,
+				B4D2000BTEST00000000002 /* MarblingEditorTests.swift in Sources */,
 				D81DAAD59CB9AC8BC0928C26 /* ImpositionTests.swift in Sources */,
 				8F78A897D927219A58741B9E /* PDFRenderTests.swift in Sources */,
 				2ABC174190C722D3FC2F771F /* PersistenceAndAssemblyTests.swift in Sources */,
+				A3D20006B00DF1C000000006 /* PhysicalBookDimensionsTests.swift in Sources */,
+				B4D20006TEST00000000001 /* DesignEditorUnificationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -398,20 +522,34 @@
 				2BF0370452CA30DB6D6D196D /* AngleControl.swift in Sources */,
 				1588E5733D64FDBE80FCEC78 /* AppShellView.swift in Sources */,
 				B59A21FEC54C379BE0C47307 /* AppStore.swift in Sources */,
+				C5SWS1B00000000000000000 /* SwatchStore.swift in Sources */,
+				C41CBVM01000000000000000 /* CalculatorSession.swift in Sources */,
 				29C40E4896D30663AE1AC81E /* ArtisanTheme.swift in Sources */,
 				006CA3DED4344E30DA4B7C1B /* AssetLibraryService.swift in Sources */,
 				7C02521109AEA604CB25092F /* AssetLibraryView.swift in Sources */,
 				375AC605063598B1F8A5280E /* BindingMath.swift in Sources */,
+				C5ASE1B00000000000000000 /* ASESwatchFile.swift in Sources */,
+				C5PRF1B00000000000000000 /* PreflightService.swift in Sources */,
+				C5PMK1B00000000000000000 /* PrinterMarks.swift in Sources */,
+				C5MEX1B00000000000000000 /* MeasurementExpression.swift in Sources */,
+				C41CBSRV2000000000000000 /* SewingTemplateExporter.swift in Sources */,
+				C41CBSRV1000000000000000 /* CalculatorMath.swift in Sources */,
 				887D4488C0C57A439FD87ABF /* BindingModels.swift in Sources */,
 				6C0D1C146274A16752049767 /* BindingWorkspace.swift in Sources */,
 				40446DE66B07ABA30AEE3CD9 /* BookBindApp.swift in Sources */,
+				A3D20003B00DF1C000000003 /* BookPreview3DBuilder.swift in Sources */,
+				A3D20004B00DF1C000000004 /* BookPreview3DView.swift in Sources */,
+				A3D20005B00DF1C000000005 /* BookPreviewWorkbenchView.swift in Sources */,
 				DDEA8625E838611BC2EDA02D /* CalculatorsView.swift in Sources */,
+				C41CBVW02000000000000000 /* CalculatorDrawings.swift in Sources */,
+				C41CBVW01000000000000000 /* BlueprintCanvas.swift in Sources */,
 				689CCEA929189769C93DEC20 /* CoverBlueprintService.swift in Sources */,
 				E1BE3674770A4621D6482FF4 /* CoverDesignerView.swift in Sources */,
 				570A3B407E1A1BBDAC165503 /* CoverEditorMath.swift in Sources */,
 				FBA28ABA58B9029B8B1E1BC5 /* CoverInspectorFields.swift in Sources */,
 				5E1FF9035F31C6A5E1A7EB6E /* CoverScrollZoomView.swift in Sources */,
 				9E551A0131D1A3BC90C96D88 /* CoverShapeElementView.swift in Sources */,
+				A3D20002B00DF1C000000002 /* CoverWrapTextureService.swift in Sources */,
 				FF53CC300C9BA15E25A1C6B9 /* DesignCanvasTool.swift in Sources */,
 				F63AAEBD123E23AEC84785F8 /* DesignPaint.swift in Sources */,
 				7FAD820882FF10523E5FFD4F /* EndpaperDesignerView.swift in Sources */,
@@ -421,21 +559,35 @@
 				66555778C6A5D622F2178737 /* EndpaperModels.swift in Sources */,
 				171AE411DF39C2DF6541DB89 /* FillControls.swift in Sources */,
 				946DE53C61F2A161DCCFC6D5 /* HomeView.swift in Sources */,
+				C41DBHOM2000000000000000 /* ProjectKindIllustration.swift in Sources */,
+				C41DBHOM1000000000000000 /* NewMasterworkSheet.swift in Sources */,
 				89631FE88607036FFB97E67E /* ImpositionService.swift in Sources */,
 				76D2DF0B4B4CFF9509EED8C5 /* ImpositionSummaryView.swift in Sources */,
 				C98F07E11C909855EDE769E3 /* ImpositionWorkbenchView.swift in Sources */,
 				BF7249DBF30A9BE19A40CB24 /* MarbledPaperGenerator.swift in Sources */,
+				B4D20008CTRL00000000001 /* MarblingCompositionController.swift in Sources */,
+				B4D2000AEDITOR0000000001 /* MarblingEditorView.swift in Sources */,
+				B4D20007OPS000000000001 /* MarblingOperationModels.swift in Sources */,
+				B4D20009RECIPE0000000001 /* MarblingRecipes.swift in Sources */,
 				81E0E91463162027CCD15420 /* MaterialsLogView.swift in Sources */,
 				F0291EFEDCDB09FA0EC7C986 /* PDFDocumentService.swift in Sources */,
 				66AD2D05F110E5DA4F8A06B8 /* PDFKitView.swift in Sources */,
 				7C417C744BC398D6A8795968 /* PDFPageDrawing.swift in Sources */,
 				2B69A42A266E7F660948190D /* PageDecorationService.swift in Sources */,
+				A3D20001B00DF1C000000001 /* PhysicalBookDimensions.swift in Sources */,
 				30CE7E48B71D047BC47330DF /* ProjectModels.swift in Sources */,
+				C41DBMDL1000000000000000 /* ProjectKind.swift in Sources */,
 				5185EFB99DFCFA00B22F4A2E /* ProjectStore.swift in Sources */,
 				6A7D644E20CF643CA43F2C0C /* ProjectWorkbenchView.swift in Sources */,
+				C5PRB1B00000000000000000 /* PreflightButton.swift in Sources */,
 				D3706F606EA8A2372ADC49F6 /* SettingsView.swift in Sources */,
 				D79FE2051C9BD3B67ACF9073 /* SignatureMapView.swift in Sources */,
 				0375CBC0D8532FEBB02F35EF /* StrokeDashControls.swift in Sources */,
+				B4D20001GUIDE0000000001 /* CoverGuideModels.swift in Sources */,
+				B4D20002DESIGN0000000001 /* DesignDocumentModels.swift in Sources */,
+				B4D20003MATH00000000001 /* DesignEditorMath.swift in Sources */,
+				B4D20004SVG000000000001 /* SVGDocumentBuilder.swift in Sources */,
+				B4D20005MARB00000000001 /* MarblingInspectorControls.swift in Sources */,
 				1D1C9D815F9067D4764242A5 /* WorkbenchInspectorChrome.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -466,7 +618,8 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.app;
-				PRODUCT_NAME = BookBind;
+				PRODUCT_MODULE_NAME = BookBind;
+				PRODUCT_NAME = InABind;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -540,7 +693,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.tests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BookBind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BookBind";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/InABind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/InABind";
 			};
 			name = Debug;
 		};
@@ -557,7 +710,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.tests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BookBind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BookBind";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/InABind.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/InABind";
 			};
 			name = Release;
 		};
@@ -639,7 +792,8 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.bookbind.app;
-				PRODUCT_NAME = BookBind;
+				PRODUCT_MODULE_NAME = BookBind;
+				PRODUCT_NAME = InABind;
 				SDKROOT = macosx;
 			};
 			name = Release;

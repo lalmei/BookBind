@@ -69,10 +69,12 @@ struct CodableColor: Equatable, Hashable, Codable {
     }
 }
 
-/// Extensible paint for shape fills (and future gradients / patterns).
+/// Extensible paint for shape fills — solid colors or regeneratable marbled paper.
 enum CoverPaint: Equatable, Hashable, Codable {
     case none
     case solid(CodableColor)
+    /// Procedural marbling; store the spec (not a bitmap) so fills stay regeneratable.
+    case marbled(MarbledPaperSpec)
 
     var isFilled: Bool {
         if case .none = self { return false }
@@ -82,5 +84,15 @@ enum CoverPaint: Equatable, Hashable, Codable {
     var solidColor: CodableColor? {
         if case let .solid(color) = self { return color }
         return nil
+    }
+
+    var marbling: MarbledPaperSpec? {
+        if case let .marbled(spec) = self { return spec }
+        return nil
+    }
+
+    var isMarbled: Bool {
+        if case .marbled = self { return true }
+        return false
     }
 }

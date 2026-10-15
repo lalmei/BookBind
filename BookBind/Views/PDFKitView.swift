@@ -10,7 +10,7 @@ struct PDFKitView: NSViewRepresentable {
         view.autoScales = true
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
-        view.backgroundColor = NSColor.textBackgroundColor
+        view.backgroundColor = ArtisanTheme.canvasNSColor
         view.document = document
         return view
     }

@@ -9,6 +9,8 @@ struct CoverDesignerView: View {
     @ObservedObject var chrome: CoverEditorChrome
 
     @State private var selectedElementID: UUID?
+    /// Multi-selection (includes primary `selectedElementID` when set).
+    @State private var selectedElementIDs: Set<UUID> = []
     @State private var canvasTool: DesignCanvasTool = .select
     @GestureState private var pinchMagnification: CGFloat = 1.0
     @State private var isDraggingElement = false
@@ -21,10 +23,14 @@ struct CoverDesignerView: View {
     @State private var measurementsExpanded = true
     @State private var layersExpanded = true
     @State private var selectionExpanded = true
-    @State private var isInspectorVisible = true
+    @AppStorage(WorkbenchInspectorChrome.visibilityKey) private var isInspectorVisible = true
     @State private var pendingImagePlacement: (wrapX: Double, wrapY: Double)?
     @State private var showImageImporter = false
     @State private var showJointGuides = true
+    @State private var showTurnInGuides = true
+    @State private var showSafeGuide = false
+    @State private var showCornerGuides = true
+    @State private var showReliefGuides = true
     @State private var collapsedLayerIDs: Set<UUID> = []
     /// Highlight target while dragging elements between layers.
     @State private var layerDropTargetID: UUID?
@@ -35,6 +41,9 @@ struct CoverDesignerView: View {
     @State private var shapeDragStart: CGPoint?
     @State private var shapeDragCurrent: CGPoint?
     @State private var isInspectorEditing = false
+    @State private var showMarbleEditor = false
+    @State private var marbleEditorSpec = MarbledPaperSpec()
+    @State private var marbleEditorElementID: UUID?
 
     private var liveZoom: Double {
         chrome.zoomFactor * Double(pinchMagnification)
@@ -156,10 +165,7 @@ struct CoverDesignerView: View {
     /// Canvas + inspector split width.
     private var minimumSplitWidth: CGFloat {
         let canvasMin: CGFloat = 416
-        if isInspectorVisible {
-            return canvasMin + 300
-        }
-        return canvasMin + WorkbenchInspectorChrome.collapsedRailWidth
+        return isInspectorVisible ? canvasMin + WorkbenchInspectorChrome.minWidth : canvasMin
     }
 
     var body: some View {
@@ -173,9 +179,6 @@ struct CoverDesignerView: View {
 
             if isInspectorVisible {
                 inspector
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
-            } else {
-                WorkbenchInspectorChrome.CollapsedRail(isVisible: $isInspectorVisible, title: "Cover")
             }
         }
         .horizontallyScrollable(minWidth: minimumSplitWidth)
@@ -191,6 +194,20 @@ struct CoverDesignerView: View {
             allowsMultipleSelection: false
         ) { result in
             handleImageImport(result)
+        }
+        .sheet(isPresented: $showMarbleEditor) {
+            MarblingEditorView(
+                spec: $marbleEditorSpec,
+                pageSize: CGSize(
+                    width: BindingMath.points(fromMillimeters: max(40, geometry.totalW)),
+                    height: BindingMath.points(fromMillimeters: max(40, geometry.boardH))
+                ),
+                onDone: {
+                    commitMarbleEditor()
+                    showMarbleEditor = false
+                }
+            )
+            .frame(minWidth: 960, minHeight: 640)
         }
     }
 
@@ -347,17 +364,22 @@ struct CoverDesignerView: View {
             let scale = canvasScale(in: geo.size)
             let wrapW = geometry.totalW * scale
             let wrapH = geometry.boardH * scale
+            let turnInInset: CGFloat = turnInInsetActive ? CGFloat(geometry.turnInMM * scale) : 0
 
             ZStack {
-                Color(nsColor: .textBackgroundColor)
+                ArtisanTheme.canvasBackground
 
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                    VStack(spacing: 8) {
+                    // Leading alignment keeps the top ruler registered with the
+                    // material sheet (avoids turnInInset/2 centering drift).
+                    VStack(alignment: .leading, spacing: 8) {
                         if showJointGuides {
                             HStack(alignment: .top, spacing: wrapRulerSpacing) {
                                 Color.clear
                                     .frame(width: wrapSideRulerColumnWidth)
                                 wrapTopRuler(wrapW: wrapW, scale: scale)
+                                    .padding(.leading, turnInInset)
+                                    .frame(width: wrapW + turnInInset * 2, alignment: .leading)
                             }
                             .fixedSize(horizontal: false, vertical: true)
                         } else {
@@ -367,6 +389,7 @@ struct CoverDesignerView: View {
                         HStack(alignment: .top, spacing: wrapRulerSpacing) {
                             if showJointGuides {
                                 wrapSideRuler(wrapH: wrapH)
+                                    .padding(.vertical, turnInInset)
                             }
                             wrapCanvas(wrapW: wrapW, wrapH: wrapH, scale: scale)
                         }
@@ -378,9 +401,9 @@ struct CoverDesignerView: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(
-                        minWidth: max(geo.size.width, wrapW + (showJointGuides ? 108 : 80)),
-                        minHeight: max(geo.size.height, wrapH + (showJointGuides ? 140 : 100)),
-                        alignment: .top
+                        minWidth: max(geo.size.width, wrapW + turnInInset * 2 + (showJointGuides ? 108 : 80)),
+                        minHeight: max(geo.size.height, wrapH + turnInInset * 2 + (showJointGuides ? 140 : 100)),
+                        alignment: .topLeading
                     )
                 }
 
@@ -396,7 +419,7 @@ struct CoverDesignerView: View {
                 chrome.zoomFactor = 1.0
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(ArtisanTheme.canvasBackground)
         .focusable()
         .modifier(CoverFocusRingDisabled())
         .onDeleteCommand {
@@ -629,7 +652,110 @@ struct CoverDesignerView: View {
         }
     }
 
+    private var turnInInsetActive: Bool {
+        showTurnInGuides && geometry.hasTurnIn
+    }
+
     private func wrapCanvas(wrapW: CGFloat, wrapH: CGFloat, scale: Double) -> some View {
+        let inset: CGFloat = turnInInsetActive ? CGFloat(geometry.turnInMM * scale) : 0
+        return artboard(wrapW: wrapW, wrapH: wrapH, scale: scale)
+            .padding(inset)
+            .background(turnInSheetBackground(active: inset > 0))
+            .overlay(turnInMarksOverlay(wrapW: wrapW, wrapH: wrapH, inset: inset, scale: scale))
+    }
+
+    @ViewBuilder
+    private func turnInSheetBackground(active: Bool) -> some View {
+        if active {
+            Rectangle()
+                .fill(Color(red: 0.96, green: 0.93, blue: 0.86))
+                .overlay {
+                    Rectangle()
+                        .strokeBorder(Color(red: 0.60, green: 0.10, blue: 0.10), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.28), radius: 10, y: 3)
+        }
+    }
+
+    @ViewBuilder
+    private func turnInMarksOverlay(wrapW: CGFloat, wrapH: CGFloat, inset: CGFloat, scale: Double) -> some View {
+        if inset > 0 {
+            let layout = geometry.productionLayout(spec: project.coverProduction)
+            // Overlay is drawn in the padded material frame (origin = material top-left
+            // when bleed is 0). Board origin is always (turnIn, turnIn) = inset.
+            let mW = wrapW + inset * 2
+            let mH = wrapH + inset * 2
+            let sx = scale
+            ZStack(alignment: .topLeading) {
+                Path { path in
+                    path.addRect(CGRect(x: inset, y: inset, width: wrapW, height: wrapH))
+                    for xMM in geometry.guideXsMM {
+                        let x = inset + CGFloat(xMM * sx)
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: mH))
+                    }
+                }
+                .stroke(Color(red: 0.0, green: 0.125, blue: 0.271).opacity(0.85),
+                        style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+
+                if showCornerGuides {
+                    Path { path in
+                        for seg in layout.cornerCuts {
+                            // productionLayout includes bleed offset; canvas overlay has
+                            // bleed 0 so subtract bleed to align with material origin.
+                            let ox = layout.bleedMM
+                            path.move(to: CGPoint(
+                                x: CGFloat((Double(seg.a.x) - ox) * sx),
+                                y: CGFloat((Double(seg.a.y) - ox) * sx)
+                            ))
+                            path.addLine(to: CGPoint(
+                                x: CGFloat((Double(seg.b.x) - ox) * sx),
+                                y: CGFloat((Double(seg.b.y) - ox) * sx)
+                            ))
+                        }
+                    }
+                    .stroke(Color(red: 0.60, green: 0.10, blue: 0.10), lineWidth: 1)
+                }
+
+                if showReliefGuides, project.coverProduction.reliefCutsEnabled {
+                    Path { path in
+                        let ox = layout.bleedMM
+                        for seg in layout.reliefCuts {
+                            path.move(to: CGPoint(
+                                x: CGFloat((Double(seg.a.x) - ox) * sx),
+                                y: CGFloat((Double(seg.a.y) - ox) * sx)
+                            ))
+                            path.addLine(to: CGPoint(
+                                x: CGFloat((Double(seg.b.x) - ox) * sx),
+                                y: CGFloat((Double(seg.b.y) - ox) * sx)
+                            ))
+                        }
+                    }
+                    .stroke(Color(red: 0.60, green: 0.10, blue: 0.10).opacity(0.85),
+                            style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                }
+
+                if showSafeGuide {
+                    let safe = layout.safeRect
+                    let ox = layout.bleedMM
+                    Rectangle()
+                        .strokeBorder(Color.green.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .frame(
+                            width: CGFloat(safe.width * sx),
+                            height: CGFloat(safe.height * sx)
+                        )
+                        .offset(
+                            x: CGFloat((safe.minX - ox) * sx),
+                            y: CGFloat((safe.minY - ox) * sx)
+                        )
+                }
+            }
+            .frame(width: mW, height: mH)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func artboard(wrapW: CGFloat, wrapH: CGFloat, scale: Double) -> some View {
         ZStack(alignment: .topLeading) {
             // Shadow only on the artboard surface — not on placed images/text/shapes.
             Rectangle()
@@ -846,7 +972,8 @@ struct CoverDesignerView: View {
         .gesture(elementDragGesture(element, scale: scale))
         .highPriorityGesture(
             TapGesture().onEnded {
-                selectedElementID = element.id
+                selectElement(element, additive: NSEvent.modifierFlags.contains(.shift)
+                    || NSEvent.modifierFlags.contains(.command))
                 canvasTool = .select
                 activeFinish = element.layer
             }
@@ -868,6 +995,14 @@ struct CoverDesignerView: View {
         let strokePx = hasStroke ? max(0.5, element.strokeWidthMM * scale) : 0
         let dashPx = element.strokeDashPatternMM().map { CGFloat($0 * scale) }
         let strokeTint = element.stroke.solidColor?.color ?? elementColor(element.layer)
+        let marbleImage: NSImage? = {
+            guard let spec = element.fill.marbling else { return nil }
+            return MarbledPaperGenerator.nsImage(
+                spec: spec,
+                sizePoints: CGSize(width: max(8, pixelWidth), height: max(8, pixelHeight)),
+                dpi: 120
+            )
+        }()
         return CoverShapeElementView(
             shapeType: element.shapeType,
             strokeStyle: element.strokeStyle,
@@ -876,7 +1011,8 @@ struct CoverDesignerView: View {
             dashPx: dashPx,
             isFilled: element.isFilled,
             color: strokeTint,
-            fillColor: element.fill.solidColor?.color
+            fillColor: element.fill.solidColor?.color,
+            marbleFill: marbleImage
         )
         .frame(width: pixelWidth, height: pixelHeight)
     }
@@ -1266,10 +1402,14 @@ struct CoverDesignerView: View {
     private func canvasScale(in size: CGSize) -> Double {
         let pad: CGFloat = 100
         let base: Double
+        // Fit the material sheet (incl. turn-in) when turn-in guides are shown so
+        // guides and artboard share one material-space layout without overflow.
+        let fitW = turnInInsetActive ? geometry.displaySheetW : geometry.totalW
+        let fitH = turnInInsetActive ? geometry.displaySheetH : geometry.boardH
         switch chrome.viewMode {
         case .fit:
-            let sx = max(40, size.width - pad) / geometry.totalW
-            let sy = max(40, size.height - pad) / geometry.boardH
+            let sx = max(40, size.width - pad) / fitW
+            let sy = max(40, size.height - pad) / fitH
             base = min(sx, sy, 8)
         case .oneToOne:
             base = 3.78
@@ -1294,21 +1434,11 @@ struct CoverDesignerView: View {
     // MARK: - Inspector
 
     private var inspector: some View {
-        ScrollView {
+        WorkbenchInspectorChrome.Panel {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Cover & spine")
-                            .font(ArtisanTheme.sectionFont)
-                            .foregroundStyle(Color(nsColor: .labelColor))
-
-                        Text("Full wrap canvas — place art anywhere. Joint guides are print marks, not barriers.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    WorkbenchInspectorChrome.ToggleButton(isVisible: $isInspectorVisible)
-                }
+                Text("Full wrap canvas — place art anywhere. Joint guides are print marks, not barriers.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
 
                 collapsibleSection("Measurements", isExpanded: $measurementsExpanded, trailing: {
                     Button("Auto", action: resetAllMeasurements)
@@ -1317,26 +1447,29 @@ struct CoverDesignerView: View {
                         .foregroundStyle(Color(nsColor: .linkColor))
                         .help(measurementsAutoHelp)
                 }) {
-                    labeledControl("Board (mm)") {
+                    labeledControl("Board") {
                         CoverInspectorNumberField(
                             value: project.boardThicknessMM,
                             fractionDigits: 1,
+                            isLength: true,
                             onCommit: { setBoardThickness($0) },
                             onEditingChanged: { isInspectorEditing = $0 }
                         )
                     }
-                    labeledControl("Groove (mm)") {
+                    labeledControl("Groove") {
                         CoverInspectorNumberField(
                             value: project.hingeGapMM,
                             fractionDigits: 1,
+                            isLength: true,
                             onCommit: { setHingeGap($0) },
                             onEditingChanged: { isInspectorEditing = $0 }
                         )
                     }
-                    labeledControl("Spine (mm)") {
+                    labeledControl("Spine") {
                         CoverInspectorNumberField(
                             value: spineWidth,
                             fractionDigits: 1,
+                            isLength: true,
                             onCommit: { setSpineWidth($0) },
                             onEditingChanged: { isInspectorEditing = $0 }
                         )
@@ -1345,6 +1478,7 @@ struct CoverDesignerView: View {
                         CoverInspectorNumberField(
                             value: project.widthMM,
                             fractionDigits: 0,
+                            isLength: true,
                             onCommit: { setCoverWidth($0) },
                             onEditingChanged: { isInspectorEditing = $0 }
                         )
@@ -1353,6 +1487,7 @@ struct CoverDesignerView: View {
                         CoverInspectorNumberField(
                             value: project.heightMM,
                             fractionDigits: 0,
+                            isLength: true,
                             onCommit: { setCoverHeight($0) },
                             onEditingChanged: { isInspectorEditing = $0 }
                         )
@@ -1375,6 +1510,26 @@ struct CoverDesignerView: View {
                             onEditingChanged: { isInspectorEditing = $0 }
                         )
                     }
+                    if project.architecture.wrapsTurnIn {
+                        labeledControl("Turn-in") {
+                            CoverInspectorNumberField(
+                                value: project.coverTurnInMM,
+                                fractionDigits: 1,
+                                isLength: true,
+                                onCommit: { setCoverTurnIn($0) },
+                                onEditingChanged: { isInspectorEditing = $0 }
+                            )
+                        }
+                        labeledControl("Reveal") {
+                            CoverInspectorNumberField(
+                                value: project.pastedownInsetMM,
+                                fractionDigits: 1,
+                                isLength: true,
+                                onCommit: { setPastedownInset($0) },
+                                onEditingChanged: { isInspectorEditing = $0 }
+                            )
+                        }
+                    }
 
                     Divider()
 
@@ -1392,6 +1547,12 @@ struct CoverDesignerView: View {
                     metricRow("Each joint", String(format: "%.1f mm", geometry.hinge))
                     metricRow("Midsection", String(format: "%.1f mm", geometry.midsection))
                     metricRow("Total wrap", String(format: "%.1f mm", geometry.totalW))
+                    if geometry.hasTurnIn {
+                        metricRow(
+                            "Material (cut)",
+                            String(format: "%.1f × %.1f mm", geometry.materialW, geometry.materialH)
+                        )
+                    }
 
                     ForEach(measurementWarnings, id: \.self) { warning in
                         Label(warning, systemImage: "exclamationmark.triangle")
@@ -1430,9 +1591,55 @@ struct CoverDesignerView: View {
                         }
                         .labelsHidden()
                     }
-                    Toggle("Joint / spine guides", isOn: $showJointGuides)
+                    Toggle("Joint / spine guides", isOn: Binding(
+                        get: { showJointGuides },
+                        set: { value in
+                            showJointGuides = value
+                            updateGuideVisibility { vis in
+                                vis.fold = value
+                                vis.spine = value
+                                vis.hinge = value
+                                vis.board = value
+                            }
+                        }
+                    ))
+                    if geometry.hasTurnIn {
+                        Toggle("Turn-in & cut marks", isOn: Binding(
+                            get: { showTurnInGuides },
+                            set: { value in
+                                showTurnInGuides = value
+                                updateGuideVisibility { vis in
+                                    vis.cut = value
+                                    vis.trim = value
+                                }
+                            }
+                        ))
+                        Toggle("Corner cuts", isOn: Binding(
+                            get: { showCornerGuides },
+                            set: { value in
+                                showCornerGuides = value
+                                updateGuideVisibility { $0.corner = value }
+                            }
+                        ))
+                        Toggle("Relief cuts", isOn: Binding(
+                            get: { showReliefGuides },
+                            set: { value in
+                                showReliefGuides = value
+                                updateGuideVisibility { $0.relief = value }
+                            }
+                        ))
+                    }
+                    Toggle("Safe area", isOn: Binding(
+                        get: { showSafeGuide },
+                        set: { value in
+                            showSafeGuide = value
+                            updateGuideVisibility { $0.safe = value }
+                        }
+                    ))
 
-                    Text("Pick a tool from the toolbar, then click or drag on the wrap. Use the I/F/D swatches to set the active finish for new shapes.")
+                    productionAllowancesSection
+
+                    Text("Pick a tool from the toolbar, then click or drag on the wrap. Shift/⌘-click multi-selects. Guides are print marks, never artwork.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1450,9 +1657,7 @@ struct CoverDesignerView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 4)
             }
-            .padding(16)
         }
-        .background(.background)
         .tint(Color(nsColor: .controlAccentColor))
         .onDisappear {
             store.save()
@@ -1796,10 +2001,11 @@ struct CoverDesignerView: View {
                     }
                     .labelsHidden()
                 }
-                labeledControl("Size mm") {
+                labeledControl("Size") {
                     CoverInspectorNumberField(
                         value: element.fontSizeMM,
                         fractionDigits: 1,
+                        isLength: true,
                         onCommit: { size in
                             updateElement(element.id) { el in
                                 el.fontSizeMM = max(1, size)
@@ -1820,20 +2026,22 @@ struct CoverDesignerView: View {
                     Text(element.imageName.isEmpty ? "Embedded image" : element.imageName)
                         .foregroundStyle(.secondary)
                 }
-                labeledControl("Width mm") {
+                labeledControl("Width") {
                     CoverInspectorNumberField(
                         value: element.widthMM,
                         fractionDigits: 1,
+                        isLength: true,
                         onCommit: { value in
                             updateElement(element.id, syncStamp: false) { $0.widthMM = max(4, value) }
                         },
                         onEditingChanged: { isInspectorEditing = $0 }
                     )
                 }
-                labeledControl("Height mm") {
+                labeledControl("Height") {
                     CoverInspectorNumberField(
                         value: element.heightMM,
                         fractionDigits: 1,
+                        isLength: true,
                         onCommit: { value in
                             updateElement(element.id, syncStamp: false) { $0.heightMM = max(4, value) }
                         },
@@ -1845,10 +2053,11 @@ struct CoverDesignerView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .help("Shape type is set at creation. Use the toolbar to draw a different shape.")
-                labeledControl("Width mm") {
+                labeledControl("Width") {
                     CoverInspectorNumberField(
                         value: element.widthMM,
                         fractionDigits: 1,
+                        isLength: true,
                         onCommit: { value in
                             updateElement(element.id, syncStamp: false) { $0.widthMM = max(4, value) }
                         },
@@ -1856,10 +2065,11 @@ struct CoverDesignerView: View {
                     )
                 }
                 if element.shapeType != .line {
-                    labeledControl("Height mm") {
+                    labeledControl("Height") {
                         CoverInspectorNumberField(
                             value: element.heightMM,
                             fractionDigits: 1,
+                            isLength: true,
                             onCommit: { value in
                                 updateElement(element.id, syncStamp: false) { $0.heightMM = max(4, value) }
                             },
@@ -1875,6 +2085,33 @@ struct CoverDesignerView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
+            if selectedElementIDs.count >= 2 {
+                Text("\(selectedElementIDs.count) selected")
+                    .font(.caption.weight(.semibold))
+                HStack(spacing: 6) {
+                    Button("Group") { groupSelection() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("Ungroup") { ungroupSelection() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Menu("Align") {
+                        ForEach(DesignAlignEdge.allCases) { edge in
+                            Button(edge.title) { alignSelection(edge) }
+                        }
+                    }
+                    .controlSize(.small)
+                    if selectedElementIDs.count >= 3 {
+                        Menu("Distribute") {
+                            ForEach(DesignDistributeAxis.allCases) { axis in
+                                Button(axis.title) { distributeSelection(axis) }
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+
             labeledControl("Position") {
                 HStack(spacing: 8) {
                     Text("X")
@@ -1884,6 +2121,7 @@ struct CoverDesignerView: View {
                         value: element.wrapCenterX(geometry: geometry),
                         fractionDigits: 1,
                         width: 56,
+                        isLength: true,
                         onCommit: { value in
                             updateElement(element.id, syncStamp: false) { el in
                                 el.usesWrapCoordinates = true
@@ -1900,6 +2138,7 @@ struct CoverDesignerView: View {
                         value: element.yMM,
                         fractionDigits: 1,
                         width: 56,
+                        isLength: true,
                         onCommit: { value in
                             updateElement(element.id, syncStamp: false) { $0.yMM = clampWrapY(value) }
                         },
@@ -1983,6 +2222,7 @@ struct CoverDesignerView: View {
                             value: element.strokeWidthMM,
                             fractionDigits: 2,
                             width: 52,
+                            isLength: true,
                             onCommit: { value in
                                 updateElement(element.id, syncStamp: false) {
                                     $0.strokeWidthMM = min(10, max(0.1, value))
@@ -2016,6 +2256,7 @@ struct CoverDesignerView: View {
                                     paint: element.fill,
                                     defaultSolid: .finishDefault(for: element.layer),
                                     allowsNone: true,
+                                    allowsMarble: true,
                                     onChange: { paint in
                                         updateElement(element.id, syncStamp: false) { $0.fill = paint }
                                     }
@@ -2024,6 +2265,23 @@ struct CoverDesignerView: View {
                         }
                         Spacer(minLength: 0)
                     }
+                }
+                if element.fill.marbling != nil {
+                    MarblingInspectorControls(
+                        spec: Binding(
+                            get: { element.fill.marbling ?? MarbledPaperSpec() },
+                            set: { newSpec in
+                                updateElement(element.id, syncStamp: false) {
+                                    $0.fill = .marbled(newSpec)
+                                }
+                            }
+                        ),
+                        onOpenEditor: {
+                            marbleEditorSpec = element.fill.marbling ?? MarbledPaperSpec()
+                            marbleEditorElementID = element.id
+                            showMarbleEditor = true
+                        }
+                    )
                 }
             }
 
@@ -2208,12 +2466,21 @@ struct CoverDesignerView: View {
         store.updateSelectedProject { $0.textPaperGSM = max(1, value) }
     }
 
+    private func setCoverTurnIn(_ value: Double) {
+        store.updateSelectedProject { $0.coverTurnInMM = max(0, value) }
+    }
+
+    private func setPastedownInset(_ value: Double) {
+        store.updateSelectedProject { $0.pastedownInsetMM = max(0, value) }
+    }
+
     private func resetAllMeasurements() {
         let defaults = coverMeasurementDefaults
         let clearPageEstimate = store.workspace(for: project.id).totalSourcePages == 0
         store.updateSelectedProject {
             $0.boardThicknessMM = defaults.boardThicknessMM
             $0.hingeGapMM = defaults.hingeGapMM
+            $0.coverTurnInMM = defaults.turnInMM
             $0.spineWidthOverrideMM = nil
             $0.widthMM = minimumBoardWidthMM
             $0.heightMM = minimumBoardHeightMM
@@ -2318,6 +2585,13 @@ struct CoverDesignerView: View {
         }
     }
 
+    private func commitMarbleEditor() {
+        guard let id = marbleEditorElementID else { return }
+        let marble = marbleEditorSpec
+        updateElement(id, syncStamp: false) { $0.fill = .marbled(marble) }
+        marbleEditorElementID = nil
+    }
+
     private func duplicateElement(_ id: UUID) {
         guard let element = project.coverElements.first(where: { $0.id == id }),
               !isLayerLocked(element.designLayerID) else { return }
@@ -2333,8 +2607,160 @@ struct CoverDesignerView: View {
     }
 
     private func duplicateSelected() {
-        guard let id = selectedElementID else { return }
-        duplicateElement(id)
+        let ids = selectedElementIDs.isEmpty
+            ? Set([selectedElementID].compactMap { $0 })
+            : selectedElementIDs
+        for id in ids {
+            duplicateElement(id)
+        }
+    }
+
+    private func selectElement(_ element: CoverDesignElement, additive: Bool) {
+        if additive {
+            if selectedElementIDs.contains(element.id) {
+                selectedElementIDs.remove(element.id)
+            } else {
+                selectedElementIDs.insert(element.id)
+            }
+            // Expand to group mates.
+            let frames = project.coverElements.map { $0.designFrame(geometry: geometry) }
+            selectedElementIDs = DesignEditorMath.expandSelection(
+                selectedIDs: selectedElementIDs,
+                frames: frames
+            )
+            selectedElementID = selectedElementIDs.contains(element.id) ? element.id : selectedElementIDs.first
+        } else {
+            var ids: Set<UUID> = [element.id]
+            if let gid = element.groupID {
+                for el in project.coverElements where el.groupID == gid {
+                    ids.insert(el.id)
+                }
+            }
+            selectedElementIDs = ids
+            selectedElementID = element.id
+        }
+    }
+
+    private func updateGuideVisibility(_ mutate: (inout CoverGuideVisibility) -> Void) {
+        store.updateSelectedProject { project in
+            mutate(&project.coverProduction.guideVisibility)
+        }
+    }
+
+    private var productionAllowancesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Production")
+                .font(.caption.weight(.semibold))
+            labeledControl("Bleed") {
+                CoverInspectorNumberField(
+                    value: project.coverProduction.bleedMM,
+                    fractionDigits: 1,
+                    width: 52,
+                    isLength: true,
+                    onCommit: { value in
+                        store.updateSelectedProject {
+                            $0.coverProduction.bleedMM = max(0, value)
+                        }
+                    },
+                    onEditingChanged: { isInspectorEditing = $0 }
+                )
+            }
+            labeledControl("Safe mm") {
+                CoverInspectorNumberField(
+                    value: project.coverProduction.safeAreaMM,
+                    fractionDigits: 1,
+                    width: 52,
+                    isLength: true,
+                    onCommit: { value in
+                        store.updateSelectedProject {
+                            $0.coverProduction.safeAreaMM = max(0, value)
+                        }
+                    },
+                    onEditingChanged: { isInspectorEditing = $0 }
+                )
+            }
+            labeledControl("Corners") {
+                Picker("", selection: Binding(
+                    get: { project.coverProduction.cornerTreatment },
+                    set: { treatment in
+                        store.updateSelectedProject { $0.coverProduction.cornerTreatment = treatment }
+                    }
+                )) {
+                    ForEach(CoverCornerTreatment.allCases) { treatment in
+                        Text(treatment.title).tag(treatment)
+                    }
+                }
+                .labelsHidden()
+            }
+            Toggle("Relief cuts near hinge", isOn: Binding(
+                get: { project.coverProduction.reliefCutsEnabled },
+                set: { enabled in
+                    store.updateSelectedProject { $0.coverProduction.reliefCutsEnabled = enabled }
+                }
+            ))
+        }
+    }
+
+    private func alignSelection(_ edge: DesignAlignEdge) {
+        let ids = selectedElementIDs.isEmpty
+            ? Set([selectedElementID].compactMap { $0 })
+            : selectedElementIDs
+        guard ids.count >= 2 else { return }
+        let frames = project.coverElements
+            .filter { ids.contains($0.id) }
+            .map { $0.designFrame(geometry: geometry) }
+        let aligned = DesignEditorMath.align(frames, edge: edge)
+        applyFrames(aligned)
+    }
+
+    private func distributeSelection(_ axis: DesignDistributeAxis) {
+        let ids = selectedElementIDs.isEmpty
+            ? Set([selectedElementID].compactMap { $0 })
+            : selectedElementIDs
+        guard ids.count >= 3 else { return }
+        let frames = project.coverElements
+            .filter { ids.contains($0.id) }
+            .map { $0.designFrame(geometry: geometry) }
+        applyFrames(DesignEditorMath.distribute(frames, axis: axis))
+    }
+
+    private func groupSelection() {
+        let ids = selectedElementIDs.isEmpty
+            ? Set([selectedElementID].compactMap { $0 })
+            : selectedElementIDs
+        guard ids.count >= 2 else { return }
+        let groupID = UUID()
+        store.updateSelectedProject { project in
+            for i in project.coverElements.indices where ids.contains(project.coverElements[i].id) {
+                project.coverElements[i].groupID = groupID
+            }
+        }
+    }
+
+    private func ungroupSelection() {
+        let ids = selectedElementIDs.isEmpty
+            ? Set([selectedElementID].compactMap { $0 })
+            : selectedElementIDs
+        store.updateSelectedProject { project in
+            for i in project.coverElements.indices where ids.contains(project.coverElements[i].id) {
+                project.coverElements[i].groupID = nil
+            }
+        }
+    }
+
+    private func applyFrames(_ frames: [DesignFrame]) {
+        let byID = Dictionary(uniqueKeysWithValues: frames.map { ($0.id, $0) })
+        store.updateSelectedProject { project in
+            for i in project.coverElements.indices {
+                guard let frame = byID[project.coverElements[i].id] else { continue }
+                project.coverElements[i].usesWrapCoordinates = true
+                project.coverElements[i].xMM = frame.midX
+                project.coverElements[i].yMM = frame.midY
+                project.coverElements[i].widthMM = frame.widthMM
+                project.coverElements[i].heightMM = frame.heightMM
+                project.coverElements[i].panel = geometry.panel(containingWrapX: frame.midX)
+            }
+        }
     }
 
     private func nudgeSelected(dxMM: Double, dyMM: Double) {

@@ -118,6 +118,25 @@ final class EndpaperMarblingTests: XCTestCase {
         XCTAssertEqual(job.backEndpapers, 0)
     }
 
+    func testPreviewMirrorsDecoratedEndsheetOntoBlankFace() {
+        var design = EndpaperDesign()
+        design.front.mode = .marbled
+        design.front.marbling = MarbledPaperSpec(style: .peacock, seed: 7)
+        design.back.mode = .blank
+
+        let (front, back) = CoverWrapTextureService.mirroredEndsheetFaces(design)
+        XCTAssertEqual(front.mode, .marbled)
+        XCTAssertEqual(back.mode, .marbled)
+        XCTAssertEqual(back.marbling?.seed, 7)
+
+        var onlyBack = EndpaperDesign()
+        onlyBack.back.mode = .solidColor
+        onlyBack.back.solidColor = .sage
+        let mirrored = CoverWrapTextureService.mirroredEndsheetFaces(onlyBack)
+        XCTAssertEqual(mirrored.front.mode, .solidColor)
+        XCTAssertEqual(mirrored.front.solidColor, .sage)
+    }
+
     private func pixelChecksum(_ image: CGImage) -> UInt64 {
         guard let data = image.dataProvider?.data else { return 0 }
         let length = CFDataGetLength(data)

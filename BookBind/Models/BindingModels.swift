@@ -1,5 +1,372 @@
+import CoreGraphics
 import Foundation
 import PDFKit
+
+/// Page-order maps for the classic single-sided 8-page slit-and-fold zine (4×2).
+/// All share the same cut: horizontal center slit across the middle two columns only.
+enum MiniZine8Template: String, CaseIterable, Identifiable, Codable {
+    case classicNested = "Classic nested"
+    case coverCenter = "Cover-center"
+    case coverLeft = "Cover-left"
+    case sequential = "Sequential"
+
+    var id: String { rawValue }
+
+    var shortLabel: String {
+        switch self {
+        case .classicNested: return "5·4·3·2 / 6·7·8·1"
+        case .coverCenter: return "8·1·2·3 / 7·6·5·4"
+        case .coverLeft: return "1·8·7·6 / 2·3·4·5"
+        case .sequential: return "3·2·1·8 / 4·5·6·7"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .classicNested:
+            return "Widely taught school/DIY map. Top row upside-down 5–4–3–2; bottom 6–7–8–1. Front cover lands at bottom-right."
+        case .coverCenter:
+            return "PDF Press–style map. Top upside-down 8–1–2–3; bottom 7–6–5–4. Cover pair sits near the center of the top row."
+        case .coverLeft:
+            return "Mycro-zine–style map. Top upside-down 1–8–7–6; bottom 2–3–4–5. Front cover at top-left."
+        case .sequential:
+            return "Softglitch-style map. Top upside-down 3–2–1–8; bottom 4–5–6–7. Cover and back sit in the top-right pair."
+        }
+    }
+
+    /// Top row, left→right, 0-based page indices (drawn at 180°).
+    var topRowPages: [Int] {
+        switch self {
+        case .classicNested: return [4, 3, 2, 1]
+        case .coverCenter: return [7, 0, 1, 2]
+        case .coverLeft: return [0, 7, 6, 5]
+        case .sequential: return [2, 1, 0, 7]
+        }
+    }
+
+    /// Bottom row, left→right, 0-based page indices (drawn upright).
+    var bottomRowPages: [Int] {
+        switch self {
+        case .classicNested: return [5, 6, 7, 0]
+        case .coverCenter: return [6, 5, 4, 3]
+        case .coverLeft: return [1, 2, 3, 4]
+        case .sequential: return [3, 4, 5, 6]
+        }
+    }
+}
+
+/// Cut / fold pattern for 16-page one-sheet layouts.
+enum MiniZine16Template: String, CaseIterable, Identifiable, Codable {
+    case crossCut = "Cross-cut 4×4"
+    case horizontalSlits = "Horizontal slits"
+
+    var id: String { rawValue }
+
+    var help: String {
+        switch self {
+        case .crossCut:
+            return "4×4 grid. Top two rows upside-down. Cut a cross through the center four panels (horizontal + vertical slits)."
+        case .horizontalSlits:
+            return "4×4 grid. Top two rows upside-down. Two horizontal slits on the midlines of the middle two column-pairs (no vertical cut)."
+        }
+    }
+}
+
+/// One numbered step in a fold / cut instruction sheet.
+struct FoldCutStep: Equatable, Identifiable {
+    var id: Int
+    var title: String
+    var detail: String
+}
+
+/// Human instructions for assembling the current imposition layout.
+struct FoldCutGuide: Equatable {
+    var title: String
+    var subtitle: String
+    var overview: String
+    var steps: [FoldCutStep]
+    var tips: [String]
+    /// Optional page-map caption (zine templates).
+    var pageMapCaption: String?
+    /// Diagram kind for the sheet preview in the guide UI.
+    var diagram: Diagram
+
+    enum Diagram: Equatable {
+        case none
+        case miniZine8(MiniZine8Template)
+        case miniZine16(MiniZine16Template)
+        case accordion(panelCount: Int)
+        case halfFold
+        case folio
+    }
+
+    static func making(for job: BindingJob) -> FoldCutGuide {
+        switch job.impositionScheme {
+        case .folioSignatures:
+            return folioGuide(style: job.bindingStyle)
+        case .halfFoldBooklet:
+            return halfFoldGuide()
+        case .miniZine8:
+            return miniZine8Guide(template: job.miniZine8Template)
+        case .miniZine16:
+            return miniZine16Guide(template: job.miniZine16Template)
+        case .accordion:
+            return accordionGuide(panelCount: job.resolvedAccordionPanelCount)
+        }
+    }
+
+    private static func folioGuide(style: BindingStyle) -> FoldCutGuide {
+        FoldCutGuide(
+            title: "Fold & print guide",
+            subtitle: "Signatures (folio) · \(style.rawValue)",
+            overview: "Pages print as 2-up landscape spreads. Nest sheets into signatures, then sew or stitch through the fold.",
+            steps: [
+                FoldCutStep(id: 1, title: "Print duplex", detail: BindingJob.duplexHintText),
+                FoldCutStep(id: 2, title: "Keep sheet order", detail: "Do not reshuffle printer sheets. Sheet 1 is the outermost nest of each signature."),
+                FoldCutStep(id: 3, title: "Fold each sheet", detail: "Fold each sheet in half along the center guide (short-edge tumble matches the spine)."),
+                FoldCutStep(
+                    id: 4,
+                    title: style == .saddleStitch ? "Nest & stitch" : "Nest into signatures",
+                    detail: style == .saddleStitch
+                        ? "Nest all folded sheets into one pamphlet and staple or sew through the fold."
+                        : "Gather folded sheets into signatures of the chosen size, then sew or bind per your architecture."
+                )
+            ],
+            tips: [
+                "Turn on Guide marks to see the fold line on proofs.",
+                "Use the Signature map to check which book pages land on each sheet face."
+            ],
+            pageMapCaption: nil,
+            diagram: .folio
+        )
+    }
+
+    private static func halfFoldGuide() -> FoldCutGuide {
+        FoldCutGuide(
+            title: "Fold & print guide",
+            subtitle: "Half-fold booklet",
+            overview: "A single nested pamphlet: each printer sheet is one folio (4 pages). Fold in half and stitch through the spine.",
+            steps: [
+                FoldCutStep(id: 1, title: "Print duplex", detail: BindingJob.duplexHintText),
+                FoldCutStep(id: 2, title: "Fold in half", detail: "Fold each sheet along the long center so left and right pages meet as a spread."),
+                FoldCutStep(id: 3, title: "Nest sheets", detail: "Stack folded sheets inside each other — outermost sheet has the cover pages."),
+                FoldCutStep(id: 4, title: "Stitch the fold", detail: "Staple or sew through the spine. Optional stitch-hole marks show punch positions.")
+            ],
+            tips: [
+                "No cut is required — only folds and stitching.",
+                "Pad content to a multiple of 4 so every sheet is full."
+            ],
+            pageMapCaption: nil,
+            diagram: .halfFold
+        )
+    }
+
+    private static func miniZine8Guide(template: MiniZine8Template) -> FoldCutGuide {
+        FoldCutGuide(
+            title: "Fold & cut guide",
+            subtitle: "8-page mini-zine · \(template.rawValue)",
+            overview: "One sheet becomes an 8-page booklet. Print single-sided, fold to crease, cut only the center slit, then collapse.",
+            steps: [
+                FoldCutStep(
+                    id: 1,
+                    title: "Print single-sided",
+                    detail: "Print the imposed sheet at 100% scale (no “fit to page”). Guides: light gray dashed = fold, darker solid gray = cut."
+                ),
+                FoldCutStep(
+                    id: 2,
+                    title: "Fold lengthwise",
+                    detail: "Fold the long edges together (hotdog). Crease firmly, then unfold flat."
+                ),
+                FoldCutStep(
+                    id: 3,
+                    title: "Fold widthwise twice",
+                    detail: "Fold short edge to short edge, crease, unfold; fold again into quarters, crease, then unfold completely so you see eight panels."
+                ),
+                FoldCutStep(
+                    id: 4,
+                    title: "Cut the center slit only",
+                    detail: "Fold short-edge to short-edge once. Cut along the solid gray line from the folded edge — only through the middle two panels. Do not cut to the outer edges of the sheet."
+                ),
+                FoldCutStep(
+                    id: 5,
+                    title: "Collapse into a booklet",
+                    detail: "Open flat, refold lengthwise along the slit, and gently push the short ends toward each other so the cut opens into a plus. Flatten so page 1 is the front cover."
+                )
+            ],
+            tips: [
+                "If pages read out of order, try another Page map template — the cut is the same for all.",
+                "Turn Guide marks off for a clean final print once you know the folds.",
+                "Score fold lines with a bone folder for sharper creases."
+            ],
+            pageMapCaption: "Page map (\(template.rawValue)): top \(template.shortLabel.components(separatedBy: " / ").first ?? "") (upside-down); bottom \(template.shortLabel.components(separatedBy: " / ").last ?? "") (upright).",
+            diagram: .miniZine8(template)
+        )
+    }
+
+    private static func miniZine16Guide(template: MiniZine16Template) -> FoldCutGuide {
+        let cutStep: FoldCutStep
+        switch template {
+        case .crossCut:
+            cutStep = FoldCutStep(
+                id: 4,
+                title: "Cut the center cross",
+                detail: "Cut only the solid gray slits: one horizontal and one vertical through the center four panels. Do not extend cuts to the sheet outer edges."
+            )
+        case .horizontalSlits:
+            cutStep = FoldCutStep(
+                id: 4,
+                title: "Cut the horizontal slits",
+                detail: "Cut only the two solid gray horizontal slits (middle two columns on the upper and lower inner midlines). Leave outer panels uncut."
+            )
+        }
+
+        return FoldCutGuide(
+            title: "Fold & cut guide",
+            subtitle: "16-page mini-zine · \(template.rawValue)",
+            overview: "One sheet folded into a 4×4 panel grid. Top two rows print upside-down. Cut the marked slits, then collapse into a 16-page booklet.",
+            steps: [
+                FoldCutStep(
+                    id: 1,
+                    title: "Print single-sided",
+                    detail: "Print at 100% scale. Light gray dashed lines are folds; darker solid gray lines are cuts."
+                ),
+                FoldCutStep(
+                    id: 2,
+                    title: "Crease the grid",
+                    detail: "Fold the sheet into halves and quarters both ways so all dashed fold lines are creased, then unfold flat."
+                ),
+                FoldCutStep(
+                    id: 3,
+                    title: "Check the panel map",
+                    detail: "Confirm upside-down pages sit in the top two rows before cutting."
+                ),
+                cutStep,
+                FoldCutStep(
+                    id: 5,
+                    title: "Collapse into a booklet",
+                    detail: "Refold along the main spine folds and push sections together so the slits open into nested signatures. Flatten with page 1 as the cover."
+                )
+            ],
+            tips: [
+                "16-page one-sheet zines are fiddly — practice on scrap paper first.",
+                "Switch Cut pattern if your fold habit uses horizontal slits instead of a cross."
+            ],
+            pageMapCaption: template.help,
+            diagram: .miniZine16(template)
+        )
+    }
+
+    private static func accordionGuide(panelCount: Int) -> FoldCutGuide {
+        FoldCutGuide(
+            title: "Fold guide",
+            subtitle: "Accordion · \(panelCount) panels",
+            overview: "One strip of panels. No cut — only alternating mountain and valley folds.",
+            steps: [
+                FoldCutStep(
+                    id: 1,
+                    title: "Print single-sided",
+                    detail: "Print the strip at 100% scale. Dashed gray lines mark panel folds."
+                ),
+                FoldCutStep(
+                    id: 2,
+                    title: "Accordion-fold",
+                    detail: "Fold along each dashed line, alternating direction (mountain / valley) so the strip zig-zags into a stack of \(panelCount) panels."
+                ),
+                FoldCutStep(
+                    id: 3,
+                    title: "Press flat",
+                    detail: "Bone-folder each crease. Optionally bind or case the closed accordion as a flap book."
+                )
+            ],
+            tips: [
+                "No cutting step for accordion layouts.",
+                "Panel width is stock width ÷ \(panelCount)."
+            ],
+            pageMapCaption: "Panels read left → right as pages 1…\(panelCount).",
+            diagram: .accordion(panelCount: panelCount)
+        )
+    }
+}
+
+/// How pages land on the printer sheet (folio signatures vs single-sheet zines / folds).
+enum ImpositionScheme: String, CaseIterable, Identifiable, Codable {
+    case folioSignatures = "Signatures (folio)"
+    case halfFoldBooklet = "Half-fold booklet"
+    case miniZine8 = "8-page mini-zine"
+    case miniZine16 = "16-page mini-zine"
+    case accordion = "Accordion fold"
+
+    var id: String { rawValue }
+
+    var help: String {
+        switch self {
+        case .folioSignatures:
+            return "Classic nested folio sheets — 2-up landscape printer spreads for section-sewn or saddle-stitch books."
+        case .halfFoldBooklet:
+            return "One nested half-fold pamphlet (saddle-stitch). Trim is your page size; printer sheet is 2-up landscape."
+        case .miniZine8:
+            return "One sheet → 8-page zine (4×2). Fold on dashes; cut only the solid center slit (middle two columns); collapse into a booklet. Pick a page-map template if your fold habit differs."
+        case .miniZine16:
+            return "One sheet → 16-page mini-zine (4×4). Fold on dashes; cut the marked slits; collapse. Choose cross-cut or horizontal slits."
+        case .accordion:
+            return "Linear accordion panels on one strip. Paper height is panel height; width is split across the panel count."
+        }
+    }
+
+    /// Folio 2-up nesting (including the half-fold booklet preset).
+    var usesFolioImpose: Bool {
+        switch self {
+        case .folioSignatures, .halfFoldBooklet: return true
+        case .miniZine8, .miniZine16, .accordion: return false
+        }
+    }
+
+    /// Single-sheet layouts where `paperSize` is the stock sheet, not page trim.
+    var paperSizeIsStockSheet: Bool {
+        switch self {
+        case .miniZine8, .miniZine16, .accordion: return true
+        case .folioSignatures, .halfFoldBooklet: return false
+        }
+    }
+
+    /// Hide nested-signature picker for pamphlets and single-sheet layouts.
+    var showsSignatureSize: Bool {
+        self == .folioSignatures
+    }
+
+    var showsAccordionPanelCount: Bool {
+        self == .accordion
+    }
+
+    var showsMiniZine8Template: Bool {
+        self == .miniZine8
+    }
+
+    var showsMiniZine16Template: Bool {
+        self == .miniZine16
+    }
+
+    /// Prefer no endpapers for DIY zine / fold layouts.
+    var prefersZeroEndpapers: Bool {
+        switch self {
+        case .halfFoldBooklet, .miniZine8, .miniZine16, .accordion: return true
+        case .folioSignatures: return false
+        }
+    }
+
+    var printInstruction: String {
+        switch self {
+        case .folioSignatures, .halfFoldBooklet:
+            return BindingJob.duplexHintText
+        case .miniZine8:
+            return "Print single-sided. Fold on dashed lines; cut only the solid center slit (middle two columns — do not cut to the sheet edges); push ends together into a booklet."
+        case .miniZine16:
+            return "Print single-sided. Fold on dashed lines; cut only the solid slits; collapse into a 16-page mini-zine."
+        case .accordion:
+            return "Print single-sided. Accordion-fold on the dashed lines (mountain / valley alternating)."
+        }
+    }
+}
 
 /// How sheets are nested for sewing or stitching.
 enum BindingStyle: String, CaseIterable, Identifiable, Codable {
@@ -46,6 +413,67 @@ enum BindingStyle: String, CaseIterable, Identifiable, Codable {
     var usesStitchHoleMarks: Bool {
         self == .saddleStitch
     }
+}
+
+/// One panel on a single-sheet layout (0-based page index within the unit).
+struct SheetCellPlacement: Equatable, Codable {
+    var pageIndex: Int?
+    var column: Int
+    var row: Int
+    /// Clockwise degrees when drawing the upright page into the cell (0 / 180 for zines).
+    var rotationDegrees: Int
+
+    var label: String {
+        pageIndex.map { String($0 + 1) } ?? "—"
+    }
+}
+
+/// Cut or fold mark in sheet coordinates (origin bottom-left, points).
+struct SheetGuideSegment: Equatable, Codable {
+    enum Kind: String, Codable {
+        case fold
+        case cut
+    }
+
+    var kind: Kind
+    var startX: CGFloat
+    var startY: CGFloat
+    var endX: CGFloat
+    var endY: CGFloat
+
+    var start: CGPoint {
+        get { CGPoint(x: startX, y: startY) }
+        set {
+            startX = newValue.x
+            startY = newValue.y
+        }
+    }
+
+    var end: CGPoint {
+        get { CGPoint(x: endX, y: endY) }
+        set {
+            endX = newValue.x
+            endY = newValue.y
+        }
+    }
+
+    init(kind: Kind, start: CGPoint, end: CGPoint) {
+        self.kind = kind
+        self.startX = start.x
+        self.startY = start.y
+        self.endX = end.x
+        self.endY = end.y
+    }
+}
+
+/// Flat description of one printer sheet for zine / accordion layouts.
+struct SheetLayout: Equatable {
+    var columns: Int
+    var rows: Int
+    var cells: [SheetCellPlacement]
+    var guides: [SheetGuideSegment]
+    /// Book pages in this unit (multiple of cells for padding).
+    var pagesPerSheet: Int
 }
 
 /// Staple/punch count along the saddle-stitch fold.
@@ -191,8 +619,15 @@ struct ImpositionSummary: Equatable {
 
 /// One-shot binding job configuration.
 struct BindingJob: Equatable, Codable {
+    var impositionScheme: ImpositionScheme = .folioSignatures
     var bindingStyle: BindingStyle = .sectionSewn
     var signatureSize: SignatureSize = .sextodecimo
+    /// Page-order map for `.miniZine8` (cut geometry is shared).
+    var miniZine8Template: MiniZine8Template = .classicNested
+    /// Cut pattern for `.miniZine16`.
+    var miniZine16Template: MiniZine16Template = .crossCut
+    /// Panel count for `.accordion` (clamped 3…12).
+    var accordionPanelCount = 6
     var frontEndpapers = 2
     var backEndpapers = 2
     /// Front / back decorative design (blank, solid, artwork, or procedural marbling).
@@ -200,6 +635,8 @@ struct BindingJob: Equatable, Codable {
 
     /// Max folded endsheets per side (each sheet = 2 leaves).
     static let maxEndsheetsPerSide = 8
+    static let minAccordionPanels = 3
+    static let maxAccordionPanels = 12
 
     /// Folded endsheet count for the front (derived from leaf count; always even leaves).
     var frontEndsheets: Int {
@@ -251,7 +688,12 @@ struct BindingJob: Equatable, Codable {
     /// Duplex instruction for the imposed output.
     static let duplexHintText = "Print duplex, flip on short edge (tumble). Keep sheet order."
 
-    var duplexHint: String { Self.duplexHintText }
+    var duplexHint: String { impositionScheme.printInstruction }
+
+    /// Clamped accordion panel count.
+    var resolvedAccordionPanelCount: Int {
+        min(Self.maxAccordionPanels, max(Self.minAccordionPanels, accordionPanelCount))
+    }
 
     // MARK: Convenience accessors (Imposition UI / assembly)
 
@@ -298,7 +740,16 @@ struct BindingJob: Equatable, Codable {
     }
 
     /// Resolved single-page trim size, or `nil` to keep each source page’s size.
+    /// For mini-zine / accordion schemes, `paperSize` is the stock sheet and trim is derived.
     var resolvedTrimSize: CGSize? {
+        guard let base = paperSize.size(customWidth: customPageWidth, customHeight: customPageHeight) else {
+            return nil
+        }
+        return ImpositionService.pageTrimSize(stockOrTrim: base, job: self)
+    }
+
+    /// Stock sheet size for single-sheet layouts, or `nil` when using source-sized folio pages.
+    var resolvedStockSheetSize: CGSize? {
         paperSize.size(customWidth: customPageWidth, customHeight: customPageHeight)
     }
 
@@ -306,6 +757,33 @@ struct BindingJob: Equatable, Codable {
     mutating func applyProjectTrim(widthMM: Double, heightMM: Double) {
         let width = BindingMath.points(fromMillimeters: max(1, widthMM))
         let height = BindingMath.points(fromMillimeters: max(1, heightMM))
+
+        if impositionScheme.paperSizeIsStockSheet {
+            // Project trim is the panel size — recover a stock sheet that yields that panel.
+            let stock: CGSize
+            switch impositionScheme {
+            case .miniZine8:
+                stock = CGSize(width: width * 4, height: height * 2)
+            case .miniZine16:
+                stock = CGSize(width: width * 4, height: height * 4)
+            case .accordion:
+                let panels = CGFloat(resolvedAccordionPanelCount)
+                stock = CGSize(width: width * panels, height: height)
+            case .folioSignatures, .halfFoldBooklet:
+                stock = CGSize(width: width, height: height)
+            }
+            let matched = PaperSize.matching(widthPoints: stock.width, heightPoints: stock.height)
+            paperSize = matched
+            if matched == .custom {
+                customPageWidth = stock.width
+                customPageHeight = stock.height
+            } else if let preset = matched.size {
+                customPageWidth = preset.width
+                customPageHeight = preset.height
+            }
+            return
+        }
+
         let matched = PaperSize.matching(widthPoints: width, heightPoints: height)
         paperSize = matched
         if matched == .custom {
@@ -326,10 +804,57 @@ struct BindingJob: Equatable, Codable {
         case .coptic: bindingStyle = .coptic
         case .saddleStitch: bindingStyle = .saddleStitch
         }
+        if architecture == .saddleStitch, impositionScheme == .folioSignatures {
+            // Keep folio unless the user already chose a zine layout.
+        }
+    }
+
+    /// Switch layout scheme and apply sensible pamphlet / zine defaults.
+    mutating func applyImpositionScheme(_ scheme: ImpositionScheme) {
+        impositionScheme = scheme
+        switch scheme {
+        case .folioSignatures:
+            break
+        case .halfFoldBooklet:
+            bindingStyle = .saddleStitch
+            frontEndpapers = 0
+            backEndpapers = 0
+            showGuideMarks = true
+            showStitchHoleMarks = true
+            creepPoints = 0
+        case .miniZine8, .miniZine16:
+            bindingStyle = .saddleStitch
+            frontEndpapers = 0
+            backEndpapers = 0
+            showGuideMarks = true
+            showStitchHoleMarks = false
+            creepPoints = 0
+            if paperSize == .source {
+                // Landscape Letter → classic ~2.75×4.25" panels on a 4×2 grid.
+                paperSize = .custom
+                customPageWidth = 792
+                customPageHeight = 612
+            }
+        case .accordion:
+            bindingStyle = .saddleStitch
+            frontEndpapers = 0
+            backEndpapers = 0
+            showGuideMarks = true
+            showStitchHoleMarks = false
+            creepPoints = 0
+            accordionPanelCount = resolvedAccordionPanelCount
+            if paperSize == .source {
+                paperSize = .letter
+                customPageWidth = 612
+                customPageHeight = 792
+            }
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case bindingStyle, signatureSize, frontEndpapers, backEndpapers, endpapers
+        case impositionScheme, bindingStyle, signatureSize
+        case miniZine8Template, miniZine16Template, accordionPanelCount
+        case frontEndpapers, backEndpapers, endpapers
         case frontEndpaperArtwork, backEndpaperArtwork, frontEndpaperColor, backEndpaperColor
         case pageNumbers, watermark, addCropMarks, showGuideMarks, showStitchHoleMarks
         case stitchHoleCount, paperSize, customPageWidth, customPageHeight
@@ -340,8 +865,12 @@ struct BindingJob: Equatable, Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        impositionScheme = try container.decodeIfPresent(ImpositionScheme.self, forKey: .impositionScheme) ?? .folioSignatures
         bindingStyle = try container.decodeIfPresent(BindingStyle.self, forKey: .bindingStyle) ?? .sectionSewn
         signatureSize = try container.decodeIfPresent(SignatureSize.self, forKey: .signatureSize) ?? .sextodecimo
+        miniZine8Template = try container.decodeIfPresent(MiniZine8Template.self, forKey: .miniZine8Template) ?? .classicNested
+        miniZine16Template = try container.decodeIfPresent(MiniZine16Template.self, forKey: .miniZine16Template) ?? .crossCut
+        accordionPanelCount = try container.decodeIfPresent(Int.self, forKey: .accordionPanelCount) ?? 6
         frontEndpapers = try container.decodeIfPresent(Int.self, forKey: .frontEndpapers) ?? 2
         backEndpapers = try container.decodeIfPresent(Int.self, forKey: .backEndpapers) ?? 2
         normalizeEndpaperLeafCounts()
@@ -374,8 +903,12 @@ struct BindingJob: Equatable, Codable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(impositionScheme, forKey: .impositionScheme)
         try container.encode(bindingStyle, forKey: .bindingStyle)
         try container.encode(signatureSize, forKey: .signatureSize)
+        try container.encode(miniZine8Template, forKey: .miniZine8Template)
+        try container.encode(miniZine16Template, forKey: .miniZine16Template)
+        try container.encode(accordionPanelCount, forKey: .accordionPanelCount)
         try container.encode(frontEndpapers, forKey: .frontEndpapers)
         try container.encode(backEndpapers, forKey: .backEndpapers)
         try container.encode(endpapers, forKey: .endpapers)
@@ -455,6 +988,9 @@ struct BindingPlan: Equatable {
     var signatureCount: Int
     var pagesPerSignature: Int
     var totalBookPages: Int
+    /// Physical sheets to print (folio: nested sheets; zine/accordion: one per unit).
+    var printSheetsRequired: Int
+    var impositionScheme: ImpositionScheme
 
     var summary: String {
         var parts: [String] = []
@@ -465,13 +1001,20 @@ struct BindingPlan: Equatable {
         if padPages > 0 {
             parts.append("\(padPages) blanks to fill")
         }
-        parts.append("\(signatureCount) × \(pagesPerSignature)-page signatures")
+        switch impositionScheme {
+        case .folioSignatures, .halfFoldBooklet:
+            parts.append("\(signatureCount) × \(pagesPerSignature)-page signatures")
+        case .miniZine8:
+            parts.append("\(printSheetsRequired) × 8-page mini-zine sheet\(printSheetsRequired == 1 ? "" : "s")")
+        case .miniZine16:
+            parts.append("\(printSheetsRequired) × 16-page mini-zine sheet\(printSheetsRequired == 1 ? "" : "s")")
+        case .accordion:
+            parts.append("\(printSheetsRequired) × \(pagesPerSignature)-panel accordion")
+        }
         return parts.joined(separator: " · ")
     }
 
-    var sheetCount: Int {
-        signatureCount * (pagesPerSignature / 4)
-    }
+    var sheetCount: Int { printSheetsRequired }
 
     /// Summary card metrics for the sidebar.
     func impositionSummary(sheetSizeLabel: String) -> ImpositionSummary {
@@ -479,7 +1022,7 @@ struct BindingPlan: Equatable {
             totalPDFPages: totalBookPages,
             totalSignatures: signatureCount,
             sheetSizeLabel: sheetSizeLabel,
-            printSheetsRequired: sheetCount
+            printSheetsRequired: printSheetsRequired
         )
     }
 }
@@ -548,12 +1091,14 @@ struct BookBlockItem: Identifiable, Equatable, Codable {
 
 /// One side of a printer sheet in the signature map (1-based book page numbers).
 struct SignatureSheetSide: Equatable, Identifiable {
-    var id: String { "\(signatureIndex)-\(sheetIndex)-\(face)" }
+    var id: String { "\(signatureIndex)-\(sheetIndex)-\(face)-\(gridLabel ?? label)" }
     var signatureIndex: Int
     var sheetIndex: Int
     var face: Face
     var leftPage: Int?
     var rightPage: Int?
+    /// Optional row label for multi-cell sheet layouts (zines / accordion).
+    var gridLabel: String?
 
     enum Face: String, Equatable {
         case front
@@ -561,6 +1106,7 @@ struct SignatureSheetSide: Equatable, Identifiable {
     }
 
     var label: String {
+        if let gridLabel { return gridLabel }
         let left = leftPage.map(String.init) ?? "—"
         let right = rightPage.map(String.init) ?? "—"
         return "\(left) | \(right)"
@@ -570,6 +1116,7 @@ struct SignatureSheetSide: Equatable, Identifiable {
 struct SignatureMap: Equatable {
     var sides: [SignatureSheetSide]
     var plan: BindingPlan
+    var sheetLayouts: [SheetLayout] = []
 
     func sides(forSignature signatureIndex: Int) -> [SignatureSheetSide] {
         sides.filter { $0.signatureIndex == signatureIndex }

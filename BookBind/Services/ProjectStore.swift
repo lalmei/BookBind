@@ -16,7 +16,7 @@ enum ProjectStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cannotCreateDirectory(let url):
-            return "Could not create BookBind data directory at \(url.path)."
+            return "Could not create InABind data directory at \(url.path)."
         }
     }
 }

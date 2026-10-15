@@ -12,6 +12,8 @@ struct ImpositionWorkbenchView: View {
     var projectTitle: String = "Project"
     @State private var isDropTargeted = false
     @State private var showPDFImporter = false
+    @State private var showBlankPageCountSheet = false
+    @State private var blankPageCount = 4
 
     @State private var sourcesExpanded = true
     @State private var bookBlockExpanded = true
@@ -20,11 +22,10 @@ struct ImpositionWorkbenchView: View {
     @State private var paperExpanded = true
     @State private var endpapersExpanded = true
     @State private var pageMarksExpanded = false
-    @State private var isInspectorVisible = true
+    @AppStorage(WorkbenchInspectorChrome.visibilityKey) private var isInspectorVisible = true
 
-    /// Preview + inspector, or preview + collapsed reopen rail.
     private var minimumWorkbenchWidth: CGFloat {
-        isInspectorVisible ? 720 : 420 + WorkbenchInspectorChrome.collapsedRailWidth
+        isInspectorVisible ? 420 + WorkbenchInspectorChrome.minWidth : 420
     }
 
     var body: some View {
@@ -38,9 +39,6 @@ struct ImpositionWorkbenchView: View {
 
             if isInspectorVisible {
                 jobInspector
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
-            } else {
-                WorkbenchInspectorChrome.CollapsedRail(isVisible: $isInspectorVisible, title: "Job")
             }
         }
         .horizontallyScrollable(minWidth: minimumWorkbenchWidth)
@@ -73,6 +71,22 @@ struct ImpositionWorkbenchView: View {
                     }
             }
         }
+        .sheet(isPresented: $workspace.showFoldGuide) {
+            FoldGuideView(guide: FoldCutGuide.making(for: workspace.job))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { workspace.showFoldGuide = false }
+                    }
+                }
+        }
+        .sheet(isPresented: $showBlankPageCountSheet) {
+            BlankPagesCountSheet(count: $blankPageCount) {
+                workspace.addBlankPages(count: blankPageCount)
+                showBlankPageCountSheet = false
+            } onCancel: {
+                showBlankPageCountSheet = false
+            }
+        }
         .onChange(of: workspace.job) { _ in
             workspace.markChanged()
         }
@@ -93,13 +107,30 @@ struct ImpositionWorkbenchView: View {
     // MARK: - Job inspector
 
     private var jobInspector: some View {
-        WorkbenchInspectorChrome.Panel(title: "Job", isVisible: $isInspectorVisible) {
+        WorkbenchInspectorChrome.Panel {
             VStack(alignment: .leading, spacing: 12) {
                 collapsibleSection("Sources", isExpanded: $sourcesExpanded, badge: sourcesBadge) {
                     sourcesContent
                 } trailing: {
-                    Button {
-                        showPDFImporter = true
+                    Menu {
+                        Button("Add PDFs…") {
+                            showPDFImporter = true
+                        }
+                        Divider()
+                        Button("Blank Page") {
+                            workspace.addBlankPage()
+                        }
+                        Button("Blank Pages…") {
+                            blankPageCount = 4
+                            showBlankPageCountSheet = true
+                        }
+                        Divider()
+                        Button("Front Cover Slot") {
+                            workspace.addCoverSlot(.frontCover)
+                        }
+                        Button("Back Cover Slot") {
+                            workspace.addCoverSlot(.backCover)
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.body.weight(.semibold))
@@ -107,9 +138,9 @@ struct ImpositionWorkbenchView: View {
                             .frame(width: 22, height: 22)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.borderless)
-                    .help("Add PDFs")
-                    .accessibilityLabel("Add PDFs")
+                    .menuStyle(.borderlessButton)
+                    .help("Add PDFs, blank pages, or cover slots")
+                    .accessibilityLabel("Add to sources and book block")
                 }
 
                 if !workspace.bookBlockItems.isEmpty {
@@ -118,6 +149,11 @@ struct ImpositionWorkbenchView: View {
                     } trailing: {
                         Menu {
                             Button("Blank Page") { workspace.addBlankPage() }
+                            Button("Blank Pages…") {
+                                blankPageCount = 4
+                                showBlankPageCountSheet = true
+                            }
+                            Divider()
                             Button("Front Cover Slot") { workspace.addCoverSlot(.frontCover) }
                             Button("Back Cover Slot") { workspace.addCoverSlot(.backCover) }
                         } label: {
@@ -144,48 +180,140 @@ struct ImpositionWorkbenchView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
-                        Button("Signature map…") {
+                        Button(workspace.job.impositionScheme.usesFolioImpose ? "Signature map…" : "Sheet map…") {
                             workspace.showSignatureMap = true
                         }
                         .buttonStyle(.link)
                         .disabled(workspace.signatureMap == nil)
+
+                        Button("Fold & cut guide…") {
+                            workspace.showFoldGuide = true
+                        }
+                        .buttonStyle(.link)
                     }
                 }
 
-                collapsibleSection("Binding", isExpanded: $bindingExpanded) {
-                    labeledControl("Style") {
-                        Picker("", selection: $workspace.job.bindingStyle) {
-                            ForEach(BindingStyle.allCases) { style in
-                                Text(style.rawValue).tag(style)
+                collapsibleSection("Layout", isExpanded: $bindingExpanded) {
+                    labeledControl("Scheme") {
+                        Picker("", selection: $workspace.job.impositionScheme) {
+                            ForEach(ImpositionScheme.allCases) { scheme in
+                                Text(scheme.rawValue).tag(scheme)
                             }
                         }
                         .labelsHidden()
-                        .onChange(of: workspace.job.bindingStyle) { _ in
+                        .onChange(of: workspace.job.impositionScheme) { scheme in
+                            workspace.job.applyImpositionScheme(scheme)
                             workspace.refreshPlan()
                             syncProjectArchitecture()
+                            syncProjectTrimFromPaper()
                         }
                     }
 
-                    if workspace.job.bindingStyle.usesSignatures {
-                        labeledControl("Signature") {
-                            Picker("", selection: $workspace.job.signatureSize) {
-                                ForEach(SignatureSize.allCases) { size in
-                                    Text(size.label).tag(size)
-                                }
-                            }
-                            .labelsHidden()
-                            .onChange(of: workspace.job.signatureSize) { _ in workspace.refreshPlan() }
-                        }
-                    }
-
-                    Text(workspace.job.bindingStyle.help)
+                    Text(workspace.job.impositionScheme.help)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if workspace.job.impositionScheme.usesFolioImpose {
+                        labeledControl("Style") {
+                            Picker("", selection: $workspace.job.bindingStyle) {
+                                ForEach(BindingStyle.allCases) { style in
+                                    Text(style.rawValue).tag(style)
+                                }
+                            }
+                            .labelsHidden()
+                            .onChange(of: workspace.job.bindingStyle) { _ in
+                                workspace.refreshPlan()
+                                syncProjectArchitecture()
+                            }
+                        }
+
+                        if workspace.job.impositionScheme.showsSignatureSize,
+                           workspace.job.bindingStyle.usesSignatures {
+                            labeledControl("Signature") {
+                                Picker("", selection: $workspace.job.signatureSize) {
+                                    ForEach(SignatureSize.allCases) { size in
+                                        Text(size.label).tag(size)
+                                    }
+                                }
+                                .labelsHidden()
+                                .onChange(of: workspace.job.signatureSize) { _ in workspace.refreshPlan() }
+                            }
+                        }
+
+                        Text(workspace.job.bindingStyle.help)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if workspace.job.impositionScheme.showsAccordionPanelCount {
+                        labeledControl("Panels") {
+                            Stepper(
+                                value: Binding(
+                                    get: { workspace.job.resolvedAccordionPanelCount },
+                                    set: {
+                                        workspace.job.accordionPanelCount = $0
+                                        workspace.refreshPlan()
+                                        syncProjectTrimFromPaper()
+                                    }
+                                ),
+                                in: BindingJob.minAccordionPanels...BindingJob.maxAccordionPanels
+                            ) {
+                                Text("\(workspace.job.resolvedAccordionPanelCount)")
+                                    .font(.callout.monospacedDigit())
+                            }
+                        }
+                    }
+
+                    if workspace.job.impositionScheme.showsMiniZine8Template {
+                        labeledControl("Page map") {
+                            Picker("", selection: $workspace.job.miniZine8Template) {
+                                ForEach(MiniZine8Template.allCases) { template in
+                                    Text(template.rawValue).tag(template)
+                                }
+                            }
+                            .labelsHidden()
+                            .onChange(of: workspace.job.miniZine8Template) { _ in
+                                workspace.refreshPlan()
+                            }
+                        }
+                        Text("\(workspace.job.miniZine8Template.shortLabel) — \(workspace.job.miniZine8Template.help)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Cut is always the center slit across the middle two columns (not to the edges). Guide marks use light gray (folds dashed, cut solid) so residue after cutting is less obvious — turn guides off for a clean final print.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("How to fold & cut…") {
+                            workspace.showFoldGuide = true
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                    }
+
+                    if workspace.job.impositionScheme.showsMiniZine16Template {
+                        labeledControl("Cut pattern") {
+                            Picker("", selection: $workspace.job.miniZine16Template) {
+                                ForEach(MiniZine16Template.allCases) { template in
+                                    Text(template.rawValue).tag(template)
+                                }
+                            }
+                            .labelsHidden()
+                            .onChange(of: workspace.job.miniZine16Template) { _ in
+                                workspace.refreshPlan()
+                            }
+                        }
+                        Text(workspace.job.miniZine16Template.help)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 collapsibleSection("Paper & sheet", isExpanded: $paperExpanded) {
-                    labeledControl("Paper") {
+                    labeledControl(workspace.job.impositionScheme.paperSizeIsStockSheet ? "Stock" : "Paper") {
                         Picker("", selection: $workspace.job.paperSize) {
                             ForEach(PaperSize.allCases) { size in
                                 Text(size.rawValue).tag(size)
@@ -198,71 +326,86 @@ struct ImpositionWorkbenchView: View {
                         }
                     }
 
-                    if workspace.job.paperSize == .custom {
-                        labeledControl("Trim (in)") {
-                            HStack(spacing: 4) {
-                                TextField(
-                                    "W",
-                                    value: Binding(
-                                        get: { Double(workspace.job.customPageWidth / 72) },
-                                        set: {
-                                            workspace.job.customPageWidth = CGFloat(max(1, $0)) * 72
-                                            syncProjectTrimFromPaper()
-                                        }
-                                    ),
-                                    format: .number
+                    if workspace.job.impositionScheme.paperSizeIsStockSheet {
+                        Text("Stock is the sheet you load in the printer. Page trim is derived from the layout grid.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let trim = workspace.job.resolvedTrimSize {
+                            Text(
+                                String(
+                                    format: "Page trim ≈ %.2f × %.2f in",
+                                    trim.width / 72,
+                                    trim.height / 72
                                 )
-                                .frame(width: 52)
+                            )
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if workspace.job.paperSize == .custom {
+                        labeledControl("Trim") {
+                            HStack(spacing: 4) {
+                                CoverInspectorNumberField(
+                                    value: BindingMath.millimeters(fromPoints: workspace.job.customPageWidth),
+                                    fractionDigits: 1,
+                                    width: 58,
+                                    isLength: true
+                                ) {
+                                    workspace.job.customPageWidth = max(1, BindingMath.points(fromMillimeters: $0))
+                                    syncProjectTrimFromPaper()
+                                }
                                 Text("×")
                                     .foregroundStyle(.secondary)
-                                TextField(
-                                    "H",
-                                    value: Binding(
-                                        get: { Double(workspace.job.customPageHeight / 72) },
-                                        set: {
-                                            workspace.job.customPageHeight = CGFloat(max(1, $0)) * 72
-                                            syncProjectTrimFromPaper()
-                                        }
-                                    ),
-                                    format: .number
-                                )
-                                .frame(width: 52)
+                                CoverInspectorNumberField(
+                                    value: BindingMath.millimeters(fromPoints: workspace.job.customPageHeight),
+                                    fractionDigits: 1,
+                                    width: 58,
+                                    isLength: true
+                                ) {
+                                    workspace.job.customPageHeight = max(1, BindingMath.points(fromMillimeters: $0))
+                                    syncProjectTrimFromPaper()
+                                }
                             }
                         }
                     }
 
-                    labeledControl("Bleed (pt)") {
-                        TextField(
-                            "pt",
-                            value: Binding(
-                                get: { Double(workspace.job.bleedPoints) },
-                                set: { workspace.job.bleedPoints = CGFloat(max(0, $0)) }
-                            ),
-                            format: .number
-                        )
-                        .frame(width: 56)
-                        .help("Extra margin outside trim. Try 9 (~⅛\") or 18 (~¼\").")
+                    labeledControl("Bleed") {
+                        CoverInspectorNumberField(
+                            value: BindingMath.millimeters(fromPoints: workspace.job.bleedPoints),
+                            fractionDigits: 1,
+                            width: 58,
+                            isLength: true
+                        ) {
+                            workspace.job.bleedPoints = max(0, BindingMath.points(fromMillimeters: $0))
+                        }
+                        .help("Extra margin outside trim. Try 3mm or ⅛in.")
                     }
 
-                    labeledControl("Creep (pt)") {
-                        TextField(
-                            "pt",
-                            value: Binding(
-                                get: { Double(workspace.job.creepPoints) },
-                                set: { workspace.job.creepPoints = CGFloat(max(0, $0)) }
-                            ),
-                            format: .number
-                        )
-                        .frame(width: 56)
-                        .help("Total shift for the innermost sheet toward the spine. 0 = off.")
+                    labeledControl("Creep") {
+                        CoverInspectorNumberField(
+                            value: BindingMath.millimeters(fromPoints: workspace.job.creepPoints),
+                            fractionDigits: 2,
+                            width: 58,
+                            isLength: true
+                        ) {
+                            workspace.job.creepPoints = max(0, BindingMath.points(fromMillimeters: $0))
+                        }
+                        .help("Total shift for the innermost sheet toward the spine. 0 = off. Calculators ▸ Signatures estimates it.")
                     }
 
                     Toggle("Normalize orientation", isOn: $workspace.job.normalizeOrientation)
                         .help("Rotate mixed landscape/portrait pages to a common orientation before imposing")
                     Toggle("Crop marks", isOn: $workspace.job.addCropMarks)
                     Toggle("Guide marks", isOn: $workspace.job.showGuideMarks)
-                        .help("Fold line and signature labels on printer spreads")
-                    if workspace.job.bindingStyle.usesStitchHoleMarks {
+                        .help(
+                            workspace.job.impositionScheme.usesFolioImpose
+                                ? "Fold line and signature labels on printer spreads"
+                                : "Light gray fold (dashed) and cut (solid) marks — turn off for a clean final print"
+                        )
+                    if workspace.job.bindingStyle.usesStitchHoleMarks,
+                       workspace.job.impositionScheme.usesFolioImpose {
                         Toggle("Stitch hole marks", isOn: $workspace.job.showStitchHoleMarks)
                             .help("Punch positions on the fold for saddle-stitch stapling")
                         if workspace.job.showStitchHoleMarks {
@@ -558,7 +701,7 @@ struct ImpositionWorkbenchView: View {
                         .foregroundStyle(.secondary)
                     Text(projectTitle)
                         .font(ArtisanTheme.cardTitleFont)
-                    Text("Add PDFs in Sources on the right, set binding, then Bind.")
+                    Text("Add PDFs in Sources on the right. The imposed preview updates as you change settings.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -573,7 +716,7 @@ struct ImpositionWorkbenchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(ArtisanTheme.canvasBackground)
     }
 
     // MARK: - Footer
@@ -587,39 +730,20 @@ struct ImpositionWorkbenchView: View {
 
             if let status = workspace.statusMessage {
                 Text(status)
-                    .font(.callout)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .help(status)
             } else if workspace.totalSourcePages > 0 {
                 Text("\(workspace.sources.count) file(s) · \(workspace.totalSourcePages) pages")
-                    .font(.callout)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
-
-            Button("Map") {
-                workspace.showSignatureMap = true
-            }
-            .disabled(workspace.signatureMap == nil)
-            .help("Show signature sheet layout")
-
-            Button("Bind") {
-                workspace.runBinding()
-            }
-            .keyboardShortcut(.return, modifiers: .command)
-            .disabled(!workspace.canBind)
-
-            Button("Export PDF…") {
-                workspace.exportBoundPDF()
-            }
-            .keyboardShortcut("s", modifiers: [.command, .shift])
-            .disabled(workspace.previewDocument == nil)
-            .buttonStyle(.bordered)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .tint(Color(nsColor: .labelColor))
+        .frame(height: 28)
         .background(.bar)
     }
 
@@ -801,6 +925,59 @@ struct ImpositionWorkbenchView: View {
             }
         }
         return handled
+    }
+}
+
+private struct BlankPagesCountSheet: View {
+    @Binding var count: Int
+    var onAdd: () -> Void
+    var onCancel: () -> Void
+
+    private let presets = [1, 2, 4, 8, 16]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Add Blank Pages")
+                .font(ArtisanTheme.sectionFont)
+                .padding(20)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 14) {
+                Text("How many blank pages should go into the book block?")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Stepper(value: $count, in: 1...200) {
+                    Text("\(count) page\(count == 1 ? "" : "s")")
+                        .font(.body.monospacedDigit())
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(presets, id: \.self) { preset in
+                        Button("\(preset)") {
+                            count = preset
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+            .padding(20)
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Add") {
+                    onAdd()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(ArtisanTheme.primary)
+            }
+            .padding(20)
+        }
+        .frame(width: 360)
     }
 }
 

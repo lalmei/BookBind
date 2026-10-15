@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Renders a shape element with fill + border brush (dash pattern / double rule / ornate stamps).
@@ -10,6 +11,8 @@ struct CoverShapeElementView: View {
     let isFilled: Bool
     let strokeColor: Color
     var fillColor: Color?
+    /// Regeneratable marbled fill (preferred over `fillColor` when set).
+    var marbleFill: NSImage?
 
     init(
         shapeType: CoverShapeType,
@@ -19,7 +22,8 @@ struct CoverShapeElementView: View {
         dashPx: [CGFloat],
         isFilled: Bool,
         color: Color,
-        fillColor: Color? = nil
+        fillColor: Color? = nil,
+        marbleFill: NSImage? = nil
     ) {
         self.shapeType = shapeType
         self.strokeStyle = strokeStyle
@@ -29,6 +33,7 @@ struct CoverShapeElementView: View {
         self.isFilled = isFilled
         self.strokeColor = color
         self.fillColor = fillColor
+        self.marbleFill = marbleFill
     }
 
     var body: some View {
@@ -38,7 +43,16 @@ struct CoverShapeElementView: View {
             let path = Self.path(shapeType, in: rect)
             ZStack {
                 if isFilled, shapeType != .line {
-                    path.fill((fillColor ?? strokeColor).opacity(0.9))
+                    if let marbleFill {
+                        Image(nsImage: marbleFill)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                            .clipShape(path)
+                    } else {
+                        path.fill((fillColor ?? strokeColor).opacity(0.9))
+                    }
                 }
                 if strokeWidthPx > 0 {
                     path.stroke(

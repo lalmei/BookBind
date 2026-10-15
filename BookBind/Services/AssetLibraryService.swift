@@ -151,7 +151,7 @@ struct AssetLibraryService {
         let url = appAssetsDirectory()
         try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         return AssetLibrary(
-            name: "BookBind Assets",
+            name: "InABind Assets",
             kind: .localFolder,
             pathHint: url.path,
             isAutoLinked: true
@@ -162,19 +162,22 @@ struct AssetLibraryService {
         guard let documentsURL = documentsURL ?? fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
             return nil
         }
-        let url = documentsURL.appendingPathComponent("BookBind Assets", isDirectory: true)
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              isDirectory.boolValue,
-              fileManager.isReadableFile(atPath: url.path) else {
-            return nil
+        for folderName in ["InABind Assets", "BookBind Assets"] {
+            let url = documentsURL.appendingPathComponent(folderName, isDirectory: true)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  fileManager.isReadableFile(atPath: url.path) else {
+                continue
+            }
+            return AssetLibrary(
+                name: folderName == "BookBind Assets" ? "InABind Assets" : folderName,
+                kind: .localFolder,
+                pathHint: url.path,
+                isAutoLinked: true
+            )
         }
-        return AssetLibrary(
-            name: "BookBind Assets",
-            kind: .localFolder,
-            pathHint: url.path,
-            isAutoLinked: true
-        )
+        return nil
     }
 
     private func appAssetsDirectory() -> URL {

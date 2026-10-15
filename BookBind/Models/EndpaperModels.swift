@@ -166,6 +166,10 @@ enum MarblingStyle: String, CaseIterable, Identifiable, Codable, Hashable {
 }
 
 /// Deterministic procedural marbling parameters (store these, not a bitmap).
+///
+/// Dual model: when `operations` is non-empty it is the authoritative composition
+/// (interactive editor / recipes). Otherwise the parametric fields synthesize
+/// a Marblizer-compatible operation list at render time.
 struct MarbledPaperSpec: Equatable, Hashable, Codable {
     var style: MarblingStyle
     var seed: UInt64
@@ -187,6 +191,13 @@ struct MarbledPaperSpec: Equatable, Hashable, Codable {
     var combStrength: Double
     /// Relative ink-drop radius before scale is applied.
     var dropSize: Double
+    /// Editable operation history in logical canvas space. `nil` or empty → parametric path.
+    var operations: [MarblingOperation]?
+
+    var hasEditableHistory: Bool {
+        guard let operations else { return false }
+        return !operations.isEmpty
+    }
 
     init(
         style: MarblingStyle = .stone,
@@ -200,7 +211,8 @@ struct MarbledPaperSpec: Equatable, Hashable, Codable {
         colorBalance: Double = 0.5,
         combSpacing: Double = 1,
         combStrength: Double = 1,
-        dropSize: Double = 1
+        dropSize: Double = 1,
+        operations: [MarblingOperation]? = nil
     ) {
         self.style = style
         self.seed = seed
@@ -214,6 +226,7 @@ struct MarbledPaperSpec: Equatable, Hashable, Codable {
         self.combSpacing = combSpacing
         self.combStrength = combStrength
         self.dropSize = dropSize
+        self.operations = operations
     }
 
     init(from decoder: Decoder) throws {
@@ -231,11 +244,35 @@ struct MarbledPaperSpec: Equatable, Hashable, Codable {
         combSpacing = try container.decodeIfPresent(Double.self, forKey: .combSpacing) ?? 1
         combStrength = try container.decodeIfPresent(Double.self, forKey: .combStrength) ?? 1
         dropSize = try container.decodeIfPresent(Double.self, forKey: .dropSize) ?? 1
+        operations = try container.decodeIfPresent([MarblingOperation].self, forKey: .operations)
     }
 
     /// New random seed; keeps palette and other settings.
+    /// When history-backed, clears operations so the next render re-seeds from
+    /// the parametric generator (“New variation from recipe”).
     mutating func regenerateVariation() {
         seed = UInt64.random(in: 1...UInt64.max)
+        if hasEditableHistory {
+            operations = nil
+        }
+    }
+
+    /// Materialize parametric style into an editable operation history.
+    mutating func ensureEditableHistory(logicalHeight: Double = MarbledPaperGenerator.defaultLogicalHeight) {
+        guard !hasEditableHistory else { return }
+        operations = MarbledPaperGenerator.buildParametricOperations(
+            spec: self,
+            logicalHeight: logicalHeight
+        )
+    }
+
+    /// Replace history with a recipe’s returned operations.
+    mutating func applyRecipe(_ ops: [MarblingOperation], replace: Bool = true) {
+        if replace || !hasEditableHistory {
+            operations = ops
+        } else {
+            operations = (operations ?? []) + ops
+        }
     }
 }
 
@@ -310,8 +347,11 @@ struct MarbledPaperPalette: Identifiable, Hashable {
     ]
 }
 
-/// Design for one endsheet face (front or back). Fill modes apply across the
-/// full flat sheet (2× leaf width); book-block pages sample pastedown/flyleaf halves.
+/// Design for one endsheet face (front or back).
+///
+/// Legacy fill modes (`blank` / `solidColor` / `artwork` / `marbled`) remain for
+/// book-block rasterization and migration. The primary editor model is `document`
+/// — a shared layer/element stack identical in concept to the cover editor.
 struct EndpaperFaceDesign: Equatable, Codable {
     var mode: EndpaperMode
     var solidColor: EndpaperColor
@@ -319,19 +359,23 @@ struct EndpaperFaceDesign: Equatable, Codable {
     var marbling: MarbledPaperSpec?
     /// When true, fold guides are shown on the endsheet artboard (print marks, not barriers).
     var showFoldGuides: Bool
+    /// Layered editable design (shapes, text, images, marbled fills).
+    var document: DesignDocument
 
     init(
         mode: EndpaperMode = .blank,
         solidColor: EndpaperColor = .none,
         artwork: EndpaperArtwork? = nil,
         marbling: MarbledPaperSpec? = nil,
-        showFoldGuides: Bool = true
+        showFoldGuides: Bool = true,
+        document: DesignDocument = DesignDocument()
     ) {
         self.mode = mode
         self.solidColor = solidColor
         self.artwork = artwork
         self.marbling = marbling
         self.showFoldGuides = showFoldGuides
+        self.document = document
     }
 
     init(from decoder: Decoder) throws {
@@ -341,6 +385,7 @@ struct EndpaperFaceDesign: Equatable, Codable {
         artwork = try container.decodeIfPresent(EndpaperArtwork.self, forKey: .artwork)
         marbling = try container.decodeIfPresent(MarbledPaperSpec.self, forKey: .marbling)
         showFoldGuides = try container.decodeIfPresent(Bool.self, forKey: .showFoldGuides) ?? true
+        document = try container.decodeIfPresent(DesignDocument.self, forKey: .document) ?? DesignDocument()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -350,10 +395,11 @@ struct EndpaperFaceDesign: Equatable, Codable {
         try container.encodeIfPresent(artwork, forKey: .artwork)
         try container.encodeIfPresent(marbling, forKey: .marbling)
         try container.encode(showFoldGuides, forKey: .showFoldGuides)
+        try container.encode(document, forKey: .document)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, solidColor, artwork, marbling, showFoldGuides
+        case mode, solidColor, artwork, marbling, showFoldGuides, document
     }
 
     mutating func ensureMarbling() {
@@ -373,6 +419,22 @@ struct EndpaperFaceDesign: Equatable, Codable {
         } else if mode != .marbled {
             mode = .blank
         }
+    }
+
+    /// Seed `document` from legacy mode fills when the document is empty.
+    mutating func ensureDesignDocument(geometry: EndsheetGeometry) {
+        document.ensureLayers()
+        guard document.elements.isEmpty else { return }
+        document = DesignDocument.migrating(
+            from: self,
+            sheetWidthMM: geometry.totalW,
+            sheetHeightMM: geometry.leafH
+        )
+    }
+
+    /// True when the layered document has drawable content.
+    var hasDocumentArtwork: Bool {
+        !document.orderedElementsForRendering().isEmpty
     }
 }
 

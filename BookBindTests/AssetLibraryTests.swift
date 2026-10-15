@@ -9,7 +9,7 @@ final class AssetLibraryTests: XCTestCase {
         let service = AssetLibraryService(appSupportBaseURL: root)
         let libraries = try service.discoveredLibraries(persisted: [])
 
-        XCTAssertEqual(libraries.first?.name, "BookBind Assets")
+        XCTAssertEqual(libraries.first?.name, "InABind Assets")
         XCTAssertEqual(libraries.first?.isAutoLinked, true)
         let expectedFolder = root
             .appendingPathComponent("BookBind", isDirectory: true)

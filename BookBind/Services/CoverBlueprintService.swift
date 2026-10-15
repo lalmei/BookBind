@@ -4,7 +4,14 @@ import UniformTypeIdentifiers
 
 enum CoverBlueprintService {
     /// Flat wrap regions: back · back joint · spine · front joint · front.
-    /// `midsection` is the BindingMath case-spine wrap (joints + spine face).
+    ///
+    /// **Coordinate spaces**
+    /// - Board-space: origin at top-left of the back board; panels use `panelOriginX`.
+    /// - Material-space: origin at top-left of the covering-material sheet; board-space
+    ///   points map via `toMaterialX` / `toMaterialY` (= board + turnIn).
+    ///
+    /// Artwork element coordinates remain board/wrap-space. Guides and cut marks are
+    /// always computed in material-space from `productionLayout(spec:)`.
     struct Geometry {
         let boardW: Double
         let boardH: Double
@@ -15,6 +22,9 @@ enum CoverBlueprintService {
         /// Designable spine face between the two joints.
         let spineFace: Double
         let totalW: Double
+        /// Covering-material turn-in folded around every board edge (mm). Zero when
+        /// the architecture does not wrap its boards.
+        let turnInMM: Double
 
         /// Legacy alias — full midsection width (joints + spine).
         var spine: Double { midsection }
@@ -29,6 +39,196 @@ enum CoverBlueprintService {
             hinge = min(requestedHinge, maxHingeEach)
             spineFace = max(2, midsection - (hinge * 2))
             totalW = boardW * 2 + midsection
+            turnInMM = project.effectiveTurnInMM
+        }
+
+        // MARK: - Turn-in / material layout
+
+        /// True when the layout carries a folded covering-material overhang.
+        var hasTurnIn: Bool { turnInMM > 0.05 }
+
+        /// Full sheet of covering material to cut, including turn-ins on all sides.
+        var materialW: Double { totalW + turnInMM * 2 }
+        var materialH: Double { boardH + turnInMM * 2 }
+
+        /// Sheet size including bleed (outer cut).
+        func sheetW(bleedMM: Double) -> Double { materialW + max(0, bleedMM) * 2 }
+        func sheetH(bleedMM: Double) -> Double { materialH + max(0, bleedMM) * 2 }
+
+        /// Board-wrap origin inside the material sheet (top-left origin, mm).
+        var boardOriginXMM: Double { turnInMM }
+        var boardOriginYMM: Double { turnInMM }
+
+        /// Board-space → material-space.
+        func toMaterialX(_ boardX: Double) -> Double { boardX + turnInMM }
+        func toMaterialY(_ boardY: Double) -> Double { boardY + turnInMM }
+        /// Material-space → board-space.
+        func toBoardX(_ materialX: Double) -> Double { materialX - turnInMM }
+        func toBoardY(_ materialY: Double) -> Double { materialY - turnInMM }
+
+        /// Canvas / export fit size: material sheet when turn-in is present.
+        var displaySheetW: Double { hasTurnIn ? materialW : totalW }
+        var displaySheetH: Double { hasTurnIn ? materialH : boardH }
+
+        /// Turn-in guide geometry in material-space (legacy helper; prefer `productionLayout`).
+        struct TurnInLayout {
+            let materialRect: CGRect
+            let boardRect: CGRect
+            let foldXs: [Double]
+            let miterCuts: [(CGPoint, CGPoint)]
+        }
+
+        func turnInLayout(foldXsMM: [Double]) -> TurnInLayout {
+            let layout = productionLayout(spec: .default)
+            let miters = layout.cornerCuts.map { ($0.a, $0.b) }
+            return TurnInLayout(
+                materialRect: layout.materialRect,
+                boardRect: layout.boardRect,
+                foldXs: foldXsMM.map(toMaterialX),
+                miterCuts: miters
+            )
+        }
+
+        /// Recalculate all production guides from board + midsection + hinge + turn-in + spec.
+        func productionLayout(spec: CoverProductionSpec = .default) -> CoverProductionLayout {
+            let t = turnInMM
+            let bleed = max(0, spec.bleedMM)
+            let material = CGRect(x: bleed, y: bleed, width: materialW, height: materialH)
+            let board = CGRect(x: bleed + t, y: bleed + t, width: totalW, height: boardH)
+            let cut = CGRect(x: 0, y: 0, width: sheetW(bleedMM: bleed), height: sheetH(bleedMM: bleed))
+            let safeInset = min(spec.safeAreaMM, min(boardW, boardH) / 2 - 0.5)
+            let safe = board.insetBy(dx: max(0, safeInset), dy: max(0, safeInset))
+
+            let spineX = bleed + toMaterialX(panelOriginX(.spine))
+            let spine = CGRect(x: spineX, y: board.minY, width: spineFace, height: boardH)
+
+            var hinges: [CGRect] = []
+            if hinge > 0.05 {
+                hinges.append(CGRect(
+                    x: bleed + toMaterialX(panelOriginX(.backHinge)),
+                    y: board.minY,
+                    width: hinge,
+                    height: boardH
+                ))
+                hinges.append(CGRect(
+                    x: bleed + toMaterialX(panelOriginX(.frontHinge)),
+                    y: board.minY,
+                    width: hinge,
+                    height: boardH
+                ))
+            }
+
+            let folds = guideXsMM.map { bleed + toMaterialX($0) }
+            let corners = cornerCuts(
+                treatment: spec.cornerTreatment,
+                material: material,
+                board: board,
+                turnIn: t,
+                radius: spec.cornerRadiusMM ?? t
+            )
+            let relief = reliefCuts(
+                enabled: spec.reliefCutsEnabled && t > 0.05,
+                board: board,
+                length: spec.reliefCutLengthMM,
+                inset: spec.reliefCutInsetMM
+            )
+
+            return CoverProductionLayout(
+                cutRect: cut,
+                materialRect: material,
+                boardRect: board,
+                safeRect: safe,
+                spineRect: spine,
+                hingeRects: hinges,
+                foldXs: folds,
+                cornerCuts: corners,
+                reliefCuts: relief,
+                turnInMM: t,
+                bleedMM: bleed,
+                cornerTreatment: spec.cornerTreatment
+            )
+        }
+
+        private func cornerCuts(
+            treatment: CoverCornerTreatment,
+            material: CGRect,
+            board: CGRect,
+            turnIn t: Double,
+            radius: Double
+        ) -> [GuideSegment] {
+            guard t > 0.05 else { return [] }
+            let ml = material.minX
+            let mt = material.minY
+            let mr = material.maxX
+            let mb = material.maxY
+            let bl = board.minX
+            let bt = board.minY
+            let br = board.maxX
+            let bb = board.maxY
+
+            switch treatment {
+            case .miter, .custom:
+                // Custom falls back to miter until freeform paths exist.
+                return [
+                    GuideSegment(a: CGPoint(x: ml, y: bt), b: CGPoint(x: bl, y: mt)),
+                    GuideSegment(a: CGPoint(x: br, y: mt), b: CGPoint(x: mr, y: bt)),
+                    GuideSegment(a: CGPoint(x: ml, y: bb), b: CGPoint(x: bl, y: mb)),
+                    GuideSegment(a: CGPoint(x: br, y: mb), b: CGPoint(x: mr, y: bb))
+                ]
+            case .square:
+                // Square butt: cut along board edge then out to material (two segments per corner).
+                return [
+                    GuideSegment(a: CGPoint(x: ml, y: bt), b: CGPoint(x: bl, y: bt)),
+                    GuideSegment(a: CGPoint(x: bl, y: bt), b: CGPoint(x: bl, y: mt)),
+                    GuideSegment(a: CGPoint(x: br, y: mt), b: CGPoint(x: br, y: bt)),
+                    GuideSegment(a: CGPoint(x: br, y: bt), b: CGPoint(x: mr, y: bt)),
+                    GuideSegment(a: CGPoint(x: ml, y: bb), b: CGPoint(x: bl, y: bb)),
+                    GuideSegment(a: CGPoint(x: bl, y: bb), b: CGPoint(x: bl, y: mb)),
+                    GuideSegment(a: CGPoint(x: br, y: mb), b: CGPoint(x: br, y: bb)),
+                    GuideSegment(a: CGPoint(x: br, y: bb), b: CGPoint(x: mr, y: bb))
+                ]
+            case .rounded:
+                // Approximate rounded corner with a chord from board corner toward material corner.
+                let r = min(radius, t)
+                return [
+                    GuideSegment(a: CGPoint(x: ml + (t - r), y: bt), b: CGPoint(x: bl, y: mt + (t - r))),
+                    GuideSegment(a: CGPoint(x: br, y: mt + (t - r)), b: CGPoint(x: mr - (t - r), y: bt)),
+                    GuideSegment(a: CGPoint(x: ml + (t - r), y: bb), b: CGPoint(x: bl, y: mb - (t - r))),
+                    GuideSegment(a: CGPoint(x: br, y: mb - (t - r)), b: CGPoint(x: mr - (t - r), y: bb))
+                ]
+            }
+        }
+
+        private func reliefCuts(
+            enabled: Bool,
+            board: CGRect,
+            length: Double,
+            inset: Double
+        ) -> [GuideSegment] {
+            guard enabled, hinge > 0.05, length > 0.05 else { return [] }
+            let backHingeX = board.minX + boardW
+            let frontHingeX = board.minX + boardW + midsection
+            let len = min(length, turnInMM)
+            let insetClamped = min(inset, hinge * 0.5)
+            // Head and tail relief near each hinge, cutting into the turn-in.
+            return [
+                GuideSegment(
+                    a: CGPoint(x: backHingeX + insetClamped, y: board.minY),
+                    b: CGPoint(x: backHingeX + insetClamped, y: board.minY - len)
+                ),
+                GuideSegment(
+                    a: CGPoint(x: backHingeX + insetClamped, y: board.maxY),
+                    b: CGPoint(x: backHingeX + insetClamped, y: board.maxY + len)
+                ),
+                GuideSegment(
+                    a: CGPoint(x: frontHingeX - insetClamped, y: board.minY),
+                    b: CGPoint(x: frontHingeX - insetClamped, y: board.minY - len)
+                ),
+                GuideSegment(
+                    a: CGPoint(x: frontHingeX - insetClamped, y: board.maxY),
+                    b: CGPoint(x: frontHingeX - insetClamped, y: board.maxY + len)
+                )
+            ]
         }
 
         func panelOriginX(_ panel: CoverPanel) -> Double {
@@ -59,7 +259,7 @@ enum CoverBlueprintService {
             return panels
         }
 
-        /// Guide lines in wrap-mm for joints / spine edges (visual only).
+        /// Guide lines in **board-space** for joints / spine edges.
         var guideXsMM: [Double] {
             var xs: [Double] = [boardW]
             if hinge > 0.05 {
@@ -69,8 +269,12 @@ enum CoverBlueprintService {
                 xs.append(boardW + midsection)
             }
             xs.append(boardW + midsection)
-            // Unique sorted
             return Array(Set(xs.map { ($0 * 100).rounded() / 100 })).sorted()
+        }
+
+        /// Joint / spine fold X positions in material-space.
+        var materialGuideXsMM: [Double] {
+            guideXsMM.map(toMaterialX)
         }
 
         func panel(containingWrapX x: Double) -> CoverPanel {
@@ -79,6 +283,83 @@ enum CoverBlueprintService {
                 if x >= origin { return panel }
             }
             return .back
+        }
+    }
+
+    /// Rasterize the flat cover wrap (material base + design elements, no labels/guides).
+    /// Origin is outside-up: back · joints · spine · front, left → right.
+    static func renderWrapImage(
+        for project: BinderyProject,
+        spineWidthMM: Double,
+        dpi: CGFloat = 150
+    ) -> NSImage? {
+        let geo = Geometry(project: project, spineWidthMM: spineWidthMM)
+        let pixelsPerMM = dpi / 25.4
+        let pixelW = max(2, Int(ceil(geo.totalW * Double(pixelsPerMM))))
+        let pixelH = max(2, Int(ceil(geo.boardH * Double(pixelsPerMM))))
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil,
+            width: pixelW,
+            height: pixelH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        // Y-up to match PDF element drawing helpers.
+        let nsContext = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsContext
+        defer { NSGraphicsContext.restoreGraphicsState() }
+
+        let scale = Double(pixelsPerMM)
+        let origin = CGPoint(x: 0, y: 0)
+        let h = geo.boardH * scale
+        let base = materialBaseFill(project.coverMaterial)
+
+        var cursor = 0.0
+        for panel in geo.layoutPanels {
+            let width = geo.panelWidth(panel) * scale
+            let fill: NSColor
+            switch panel {
+            case .back, .front:
+                fill = base
+            case .spine:
+                fill = base.blended(withFraction: 0.08, of: .black) ?? base
+            case .backHinge, .frontHinge:
+                fill = base.blended(withFraction: 0.04, of: .black) ?? base
+            }
+            ctx.setFillColor(fill.cgColor)
+            ctx.fill(CGRect(x: cursor, y: 0, width: max(1, width), height: h))
+            cursor += width
+        }
+
+        for element in project.orderedCoverElementsForRendering() where finishVisible(element.layer, in: project) {
+            drawElement(
+                element,
+                geometry: geo,
+                origin: origin,
+                scale: scale,
+                heightPts: h
+            )
+        }
+
+        guard let cgImage = ctx.makeImage() else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: pixelW, height: pixelH))
+    }
+
+    static func materialBaseFill(_ material: CoverMaterial) -> NSColor {
+        switch material {
+        case .moroccanGoat:
+            return NSColor(red: 0.92, green: 0.88, blue: 0.82, alpha: 1)
+        case .bookram, .buckram:
+            return NSColor(white: 0.93, alpha: 1)
+        case .bookCloth:
+            return .white
+        case .paper:
+            return NSColor(red: 0.96, green: 0.95, blue: 0.92, alpha: 1)
         }
     }
 
@@ -115,12 +396,22 @@ enum CoverBlueprintService {
             color: .secondaryLabelColor
         )
 
-        let scale = min(620 / geo.totalW, 360 / geo.boardH)
+        let fitW = geo.hasTurnIn ? geo.materialW : geo.totalW
+        let fitH = geo.hasTurnIn ? geo.materialH : geo.boardH
+        let scale = min(620 / fitW, 360 / fitH)
         let startX = 40.0
         let startY = 90.0
         let h = geo.boardH * scale
+        let inset = geo.turnInMM * scale
+        let boardX = startX + inset
+        let boardY = startY + inset
 
-        var cursor = startX
+        // Covering-material sheet (cut edge) + turn-in fill, drawn under the panels.
+        if geo.hasTurnIn {
+            drawTurnInSheet(context, geo: geo, startX: startX, startY: startY, scale: scale)
+        }
+
+        var cursor = boardX
         for panel in geo.layoutPanels {
             let width = geo.panelWidth(panel) * scale
             let fill: NSColor
@@ -143,7 +434,7 @@ enum CoverBlueprintService {
             }
             drawWrapPanel(
                 context,
-                rect: CGRect(x: cursor, y: startY, width: max(1, width), height: h),
+                rect: CGRect(x: cursor, y: boardY, width: max(1, width), height: h),
                 fill: fill,
                 label: label
             )
@@ -154,27 +445,42 @@ enum CoverBlueprintService {
             drawElement(
                 element,
                 geometry: geo,
-                origin: CGPoint(x: startX, y: startY),
+                origin: CGPoint(x: boardX, y: boardY),
                 scale: scale,
                 heightPts: h
             )
         }
 
+        // Fold + miter cut marks over the panels.
+        if geo.hasTurnIn {
+            drawTurnInMarks(context, geo: geo, startX: startX, startY: startY, scale: scale)
+        }
+
+        let widthLabel = geo.hasTurnIn
+            ? String(format: "BOARD WRAP: %.1f mm  ·  MATERIAL incl. turn-in: %.1f × %.1f mm", geo.totalW, geo.materialW, geo.materialH)
+            : String(format: "TOTAL WIDTH: %.1f mm", geo.totalW)
         drawText(
-            String(format: "TOTAL WIDTH: %.1f mm", geo.totalW),
-            at: CGPoint(x: startX, y: startY + h + 18),
+            widthLabel,
+            at: CGPoint(x: startX, y: startY + fitH * scale + 18),
             size: 10,
             color: NSColor(red: 0.0, green: 0.125, blue: 0.271, alpha: 0.7)
         )
 
-        let metrics = [
+        var metrics = [
             String(format: "Spine: %.2f mm", spineWidthMM),
             String(format: "Board: %.2f mm · Groove: %.2f mm", project.boardThicknessMM, project.hingeGapMM),
             "Pages: \(pageCount) · GSM: \(Int(project.textPaperGSM))",
             "Layers: \(layerLabel(project))"
         ]
+        if geo.hasTurnIn {
+            metrics.append(String(
+                format: "Turn-in: %.1f mm (fold to inside) · Pastedown reveal: %.1f mm",
+                geo.turnInMM, max(0, project.pastedownInsetMM)
+            ))
+        }
+        let metricsTop = 50.0 + Double(max(0, metrics.count - 4)) * 14.0
         for (index, metric) in metrics.enumerated() {
-            drawText(metric, at: CGPoint(x: 40, y: 50 - CGFloat(index * 14)), size: 10, color: .labelColor)
+            drawText(metric, at: CGPoint(x: 40, y: metricsTop - Double(index * 14)), size: 10, color: .labelColor)
         }
 
         context.endPDFPage()
@@ -186,51 +492,97 @@ enum CoverBlueprintService {
         for project: BinderyProject,
         pageCount: Int,
         spineWidthMM: Double,
-        to url: URL
+        to url: URL,
+        mode: SVGDocumentBuilder.ExportMode = .production
     ) throws {
         let geo = Geometry(project: project, spineWidthMM: spineWidthMM)
-        let margin = 24.0
-        let labelH = 28.0
-        let canvasW = geo.totalW + margin * 2
-        let canvasH = geo.boardH + margin * 2 + labelH
+        let production = project.coverProduction
+        let layout = geo.productionLayout(spec: production)
+        let visibility = production.guideVisibility
+        let margin = mode.includesGuides ? 24.0 : 0.0
+        let labelH = mode.includesGuides ? 28.0 : 0.0
+        let t = geo.turnInMM
+        let bleed = layout.bleedMM
+        let sheetW = layout.cutRect.width
+        let sheetH = layout.cutRect.height
+        let canvasW = sheetW + margin * 2
+        let canvasH = sheetH + margin * 2 + labelH
+        let headerLabel = geo.hasTurnIn
+            ? "MATERIAL incl. turn-in: \(fmt(geo.materialW))mm × \(fmt(geo.materialH))mm · board wrap \(fmt(geo.totalW))mm"
+            : "TOTAL WIDTH: \(fmt(geo.totalW))mm"
 
-        var svg = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <svg xmlns="http://www.w3.org/2000/svg" width="\(fmt(canvasW))mm" height="\(fmt(canvasH))mm" viewBox="0 0 \(fmt(canvasW)) \(fmt(canvasH))">
-          <title>\(escape(project.title)) — Cover Blueprint</title>
-          <desc>Spine \(fmt(spineWidthMM))mm · \(pageCount) pages · \(escape(project.coverMaterial.rawValue))</desc>
-          <defs>
-            <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#c4c6cf" stroke-width="0.2"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="#f9f9ff"/>
-          <rect x="0" y="0" width="\(fmt(canvasW))" height="\(fmt(canvasH))" fill="url(#grid)"/>
-          <g transform="translate(\(fmt(margin)), \(fmt(margin + 12)))">
-            <text x="0" y="-4" font-family="system-ui, sans-serif" font-size="3.2" fill="#74777f" letter-spacing="0.4">TOTAL WIDTH: \(fmt(geo.totalW))mm</text>
-            <rect x="0" y="0" width="\(fmt(geo.totalW))" height="0.4" fill="#002045" opacity="0.35"/>
-        """
+        var svg = SVGDocumentBuilder.rootOpen(
+            widthMM: canvasW,
+            heightMM: canvasH,
+            title: "\(project.title) — Cover \(mode == .clean ? "Artwork" : "Blueprint")",
+            desc: "Spine \(fmt(spineWidthMM))mm · \(pageCount) pages · \(project.coverMaterial.rawValue)"
+        )
 
-        // Panels: back · joint · spine · joint · front
-        for panel in geo.layoutPanels {
-            let x = geo.panelOriginX(panel)
-            let w = geo.panelWidth(panel)
-            let fill: String
-            switch panel {
-            case .back, .front: fill = "#f0f3ff"
-            case .spine: fill = "#d6e3ff"
-            case .backHinge, .frontHinge: fill = "#e8eadc"
+        if mode.includesGuides {
+            svg += """
+              <defs>
+                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#c4c6cf" stroke-width="0.2"/>
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="#f9f9ff"/>
+              <rect x="0" y="0" width="\(fmt(canvasW))" height="\(fmt(canvasH))" fill="url(#grid)"/>
+            """
+        } else {
+            svg += "<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n"
+        }
+
+        svg += "<g transform=\"translate(\(fmt(margin)), \(fmt(margin + (mode.includesGuides ? 12 : 0))))\">\n"
+        if mode.includesGuides {
+            svg += """
+                <text x="0" y="-4" font-family="system-ui, sans-serif" font-size="3.2" fill="#74777f" letter-spacing="0.4">\(escape(headerLabel))</text>
+            """
+        }
+
+        // Artwork lives in board-space, nested at the board origin inside the cut sheet.
+        let boardOX = bleed + t
+        let boardOY = bleed + t
+        if mode.includesGuides, geo.hasTurnIn || bleed > 0.05 {
+            // Turn-in / material fill (not artwork).
+            svg += SVGDocumentBuilder.rect(
+                x: layout.materialRect.minX,
+                y: layout.materialRect.minY,
+                w: layout.materialRect.width,
+                h: layout.materialRect.height,
+                fill: "#f5eedc",
+                stroke: nil
+            )
+        }
+
+        svg += "<g id=\"artwork\" transform=\"translate(\(fmt(boardOX)), \(fmt(boardOY)))\">\n"
+
+        if mode.includesGuides {
+            for panel in geo.layoutPanels {
+                let x = geo.panelOriginX(panel)
+                let w = geo.panelWidth(panel)
+                let fill: String
+                switch panel {
+                case .back, .front: fill = "#f0f3ff"
+                case .spine: fill = "#d6e3ff"
+                case .backHinge, .frontHinge: fill = "#e8eadc"
+                }
+                let label: String
+                switch panel {
+                case .back, .front:
+                    label = "\(panel.title.uppercased()): \(fmt(geo.boardW))mm × \(fmt(geo.boardH))mm"
+                case .spine:
+                    label = "SPINE: \(fmt(geo.spineFace))mm"
+                case .backHinge, .frontHinge:
+                    label = "JOINT: \(fmt(geo.hinge))mm"
+                }
+                svg += panelSVG(x: x, w: w, h: geo.boardH, fill: fill, label: label, spine: panel == .spine)
             }
-            let label: String
-            switch panel {
-            case .back, .front:
-                label = "\(panel.title.uppercased()): \(fmt(geo.boardW))mm × \(fmt(geo.boardH))mm"
-            case .spine:
-                label = "SPINE: \(fmt(geo.spineFace))mm"
-            case .backHinge, .frontHinge:
-                label = "JOINT: \(fmt(geo.hinge))mm"
-            }
-            svg += panelSVG(x: x, w: w, h: geo.boardH, fill: fill, label: label, spine: panel == .spine)
+        } else {
+            // Clean: solid material base only (no panel labels).
+            svg += SVGDocumentBuilder.rect(
+                x: 0, y: 0, w: geo.totalW, h: geo.boardH,
+                fill: "#f7f4ec", stroke: nil
+            )
         }
 
         for finish in CoverElementLayer.allCases {
@@ -246,12 +598,240 @@ enum CoverBlueprintService {
             svg += "</g>\n"
         }
 
-        svg += """
-          </g>
-        </svg>
-        """
+        svg += "</g>\n" // artwork
 
+        if mode.includesGuides {
+            svg += productionGuidesSVG(layout: layout, geo: geo, visibility: visibility)
+        }
+
+        svg += "</g>\n"
+        svg += SVGDocumentBuilder.rootClose
         try Data(svg.utf8).write(to: url, options: [.atomic])
+    }
+
+    /// Production marks in material/cut space. Never part of the artwork group.
+    private static func productionGuidesSVG(
+        layout: CoverProductionLayout,
+        geo: Geometry,
+        visibility: CoverGuideVisibility
+    ) -> String {
+        var out = ""
+        let cutStroke = "#992020"
+        let foldStroke = "#002045"
+
+        if visibility.cut {
+            var content = SVGDocumentBuilder.rect(
+                x: layout.cutRect.minX,
+                y: layout.cutRect.minY,
+                w: layout.cutRect.width,
+                h: layout.cutRect.height,
+                fill: nil,
+                stroke: cutStroke,
+                strokeWidth: 0.5
+            )
+            if layout.bleedMM > 0.05 {
+                content += SVGDocumentBuilder.rect(
+                    x: layout.materialRect.minX,
+                    y: layout.materialRect.minY,
+                    w: layout.materialRect.width,
+                    h: layout.materialRect.height,
+                    fill: nil,
+                    stroke: cutStroke,
+                    strokeWidth: 0.35,
+                    dash: "1 1",
+                    opacity: 0.7
+                )
+            }
+            out += SVGDocumentBuilder.guideGroup(id: "guides-cut", content: content)
+        }
+
+        if visibility.fold || visibility.board {
+            var content = ""
+            if visibility.board || visibility.fold {
+                content += SVGDocumentBuilder.rect(
+                    x: layout.boardRect.minX,
+                    y: layout.boardRect.minY,
+                    w: layout.boardRect.width,
+                    h: layout.boardRect.height,
+                    fill: nil,
+                    stroke: foldStroke,
+                    strokeWidth: 0.4,
+                    dash: "3 2",
+                    opacity: 0.85
+                )
+            }
+            if visibility.fold {
+                for x in layout.foldXs {
+                    content += SVGDocumentBuilder.line(
+                        x1: x, y1: layout.materialRect.minY,
+                        x2: x, y2: layout.materialRect.maxY,
+                        stroke: foldStroke, width: 0.35, dash: "3 2", opacity: 0.7
+                    )
+                }
+            }
+            out += SVGDocumentBuilder.guideGroup(id: "guides-fold", content: content)
+        }
+
+        if visibility.spine {
+            let s = layout.spineRect
+            out += SVGDocumentBuilder.guideGroup(
+                id: "guides-spine",
+                content: SVGDocumentBuilder.rect(
+                    x: s.minX, y: s.minY, w: s.width, h: s.height,
+                    fill: nil, stroke: "#3355aa", strokeWidth: 0.3, dash: "2 2", opacity: 0.8
+                )
+            )
+        }
+
+        if visibility.hinge {
+            var content = ""
+            for h in layout.hingeRects {
+                content += SVGDocumentBuilder.rect(
+                    x: h.minX, y: h.minY, w: h.width, h: h.height,
+                    fill: nil, stroke: "#667744", strokeWidth: 0.3, dash: "2 2", opacity: 0.75
+                )
+            }
+            out += SVGDocumentBuilder.guideGroup(id: "guides-hinge", content: content)
+        }
+
+        if visibility.safe {
+            let s = layout.safeRect
+            out += SVGDocumentBuilder.guideGroup(
+                id: "guides-safe",
+                content: SVGDocumentBuilder.rect(
+                    x: s.minX, y: s.minY, w: s.width, h: s.height,
+                    fill: nil, stroke: "#228866", strokeWidth: 0.25, dash: "1 2", opacity: 0.65
+                )
+            )
+        }
+
+        if visibility.corner, !layout.cornerCuts.isEmpty {
+            var content = ""
+            for seg in layout.cornerCuts {
+                content += SVGDocumentBuilder.line(
+                    x1: Double(seg.a.x), y1: Double(seg.a.y),
+                    x2: Double(seg.b.x), y2: Double(seg.b.y),
+                    stroke: cutStroke, width: 0.5
+                )
+            }
+            out += SVGDocumentBuilder.guideGroup(id: "guides-corner", content: content)
+        }
+
+        if visibility.relief, !layout.reliefCuts.isEmpty {
+            var content = ""
+            for seg in layout.reliefCuts {
+                content += SVGDocumentBuilder.line(
+                    x1: Double(seg.a.x), y1: Double(seg.a.y),
+                    x2: Double(seg.b.x), y2: Double(seg.b.y),
+                    stroke: cutStroke, width: 0.4, dash: "1 1"
+                )
+            }
+            out += SVGDocumentBuilder.guideGroup(id: "guides-relief", content: content)
+        }
+
+        if visibility.trim, layout.bleedMM > 0.05 {
+            out += SVGDocumentBuilder.guideGroup(
+                id: "guides-trim",
+                content: SVGDocumentBuilder.rect(
+                    x: layout.materialRect.minX,
+                    y: layout.materialRect.minY,
+                    w: layout.materialRect.width,
+                    h: layout.materialRect.height,
+                    fill: nil,
+                    stroke: "#aa6622",
+                    strokeWidth: 0.3,
+                    dash: "4 2",
+                    opacity: 0.7
+                )
+            )
+        }
+
+        if geo.hasTurnIn {
+            out += """
+            <text x="\(fmt(layout.cutRect.minX))" y="\(fmt(layout.cutRect.maxY + 4))" font-family="system-ui, sans-serif" font-size="3" fill="#992020">TURN-IN \(fmt(geo.turnInMM))mm · \(escape(layout.cornerTreatment.title)) — solid = cut, dashed = fold · guides are not artwork</text>
+            """
+        }
+        return out
+    }
+
+    // MARK: - Turn-in guide drawing (PDF, Y-up device space)
+
+    /// Cut edge + folded overhang fill for the covering material sheet.
+    private static func drawTurnInSheet(
+        _ context: CGContext,
+        geo: Geometry,
+        startX: Double,
+        startY: Double,
+        scale: Double
+    ) {
+        let materialRect = CGRect(
+            x: startX,
+            y: startY,
+            width: geo.materialW * scale,
+            height: geo.materialH * scale
+        )
+        context.setFillColor(NSColor(red: 0.96, green: 0.93, blue: 0.86, alpha: 1).cgColor)
+        context.fill(materialRect)
+        // Outer edge is the cut line.
+        context.setStrokeColor(NSColor(red: 0.60, green: 0.10, blue: 0.10, alpha: 1).cgColor)
+        context.setLineDash(phase: 0, lengths: [])
+        context.setLineWidth(1.2)
+        context.stroke(materialRect)
+    }
+
+    /// Board/spine fold rectangle, joint folds, and 45° corner miter cuts.
+    private static func drawTurnInMarks(
+        _ context: CGContext,
+        geo: Geometry,
+        startX: Double,
+        startY: Double,
+        scale: Double
+    ) {
+        let layout = geo.turnInLayout(foldXsMM: geo.guideXsMM)
+        // Top-left mm → Y-up device.
+        func dev(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: startX + Double(p.x) * scale, y: startY + (geo.materialH - Double(p.y)) * scale)
+        }
+
+        // Board fold rectangle (dashed).
+        let foldColor = NSColor(red: 0.0, green: 0.125, blue: 0.271, alpha: 0.85)
+        context.setStrokeColor(foldColor.cgColor)
+        context.setLineWidth(0.8)
+        context.setLineDash(phase: 0, lengths: [5, 4])
+        let boardTopLeft = dev(CGPoint(x: layout.boardRect.minX, y: layout.boardRect.minY))
+        let boardRectDevice = CGRect(
+            x: boardTopLeft.x,
+            y: boardTopLeft.y - geo.boardH * scale,
+            width: geo.totalW * scale,
+            height: geo.boardH * scale
+        )
+        context.stroke(boardRectDevice)
+
+        // Joint / spine fold lines across the material height.
+        for x in layout.foldXs {
+            let top = dev(CGPoint(x: x, y: 0))
+            let bottom = dev(CGPoint(x: x, y: geo.materialH))
+            context.move(to: top)
+            context.addLine(to: bottom)
+        }
+        context.strokePath()
+
+        // Corner miter cuts (solid).
+        context.setLineDash(phase: 0, lengths: [])
+        context.setStrokeColor(NSColor(red: 0.60, green: 0.10, blue: 0.10, alpha: 1).cgColor)
+        context.setLineWidth(1.0)
+        for (a, b) in layout.miterCuts {
+            context.move(to: dev(a))
+            context.addLine(to: dev(b))
+        }
+        context.strokePath()
+
+        drawText(
+            String(format: "TURN-IN %.0f mm — solid = cut, dashed = fold", geo.turnInMM),
+            at: CGPoint(x: startX, y: startY + geo.materialH * scale + 4),
+            size: 8,
+            color: NSColor(red: 0.60, green: 0.10, blue: 0.10, alpha: 1)
+        )
     }
 
     // MARK: - PDF helpers
@@ -576,10 +1156,6 @@ enum CoverBlueprintService {
         // Inset so the stroke stays inside the element bounds, matching the canvas.
         let w = max(1, element.widthMM) - strokeW
         let h = max(1, element.heightMM) - strokeW
-        let fill: String = {
-            guard element.shapeType != .line, let solid = element.fill.solidColor else { return "none" }
-            return hexFromCodable(solid)
-        }()
         let dashValues = element.strokeDashPatternMM()
         var strokeAttrs = "stroke=\"\(strokeHex)\" stroke-width=\"\(fmt(strokeW))\""
         if !dashValues.isEmpty {
@@ -592,6 +1168,20 @@ enum CoverBlueprintService {
         let inner = element.strokeWidthMM * 2.5
 
         var body = ""
+        // Marbled fill: regeneratable raster under the stroke path.
+        if element.shapeType != .line, let marble = element.fill.marbling {
+            let fx = ox - w / 2
+            let fy = oy - h / 2
+            body += SVGDocumentBuilder.marbledImageElement(
+                spec: marble, x: fx, y: fy, width: w, height: h
+            )
+        }
+        let fill: String = {
+            guard element.shapeType != .line else { return "none" }
+            if element.fill.isMarbled { return "none" }
+            guard let solid = element.fill.solidColor else { return "none" }
+            return hexFromCodable(solid)
+        }()
         switch element.shapeType {
         case .rectangle:
             body += "<rect x=\"\(fmt(ox - w / 2))\" y=\"\(fmt(oy - h / 2))\" width=\"\(fmt(w))\" height=\"\(fmt(h))\" fill=\"\(fill)\" \(strokeAttrs)/>"
@@ -747,7 +1337,8 @@ enum CoverExportService {
     static func exportSVG(
         project: BinderyProject,
         workspace: BindingWorkspace,
-        store: AppStore
+        store: AppStore,
+        mode: SVGDocumentBuilder.ExportMode = .production
     ) {
         let layout = LayoutContext(project: project, workspace: workspace)
         let panel = NSSavePanel()
@@ -757,7 +1348,8 @@ enum CoverExportService {
             panel.allowedContentTypes = [.xml]
         }
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = "\(project.title)-cover.svg"
+        let suffix = mode == .clean ? "cover-artwork" : "cover"
+        panel.nameFieldStringValue = "\(project.title)-\(suffix).svg"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
@@ -765,7 +1357,8 @@ enum CoverExportService {
                 for: project,
                 pageCount: layout.pageCount,
                 spineWidthMM: layout.spineWidthMM,
-                to: url
+                to: url,
+                mode: mode
             )
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {

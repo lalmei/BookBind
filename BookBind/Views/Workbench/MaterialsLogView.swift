@@ -20,23 +20,21 @@ struct MaterialsLogView: View {
             Divider()
             addRow
         }
-        .background(ArtisanTheme.surfaceBright)
+        .background(ArtisanTheme.contentBackground)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Materials")
-                .font(ArtisanTheme.sectionFont)
-                .foregroundStyle(ArtisanTheme.primary)
-            Text("Stock and notes for \(project.title). Separate from the global Calculators.")
+        HStack(spacing: 12) {
+            Text("Stock and notes for this book.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            Spacer()
             Button("Prefill from Project Specs") {
                 prefillMaterials()
             }
-            .buttonStyle(.link)
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
     private var emptyState: some View {

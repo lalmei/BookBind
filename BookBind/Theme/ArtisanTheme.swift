@@ -1,29 +1,43 @@
 import AppKit
 import SwiftUI
 
-/// Digital bindery tokens for BookBind's dark workbench.
+/// Design tokens for InABind.
+///
+/// Surfaces are **semantic system colors**, so pages, canvases, and inspectors match the
+/// sidebar and toolbar macOS draws. The brand lives in two accents (ink blue, foil gold)
+/// and the serif display type — never in background fills.
 enum ArtisanTheme {
-    static let surface = Color(hex: 0x121820)
-    static let surfaceBright = Color(hex: 0x0e131a)
-    static let surfaceContainerLowest = Color(hex: 0x171e28)
-    static let surfaceContainerLow = Color(hex: 0x1c2430)
-    static let surfaceContainer = Color(hex: 0x222b38)
-    static let surfaceContainerHigh = Color(hex: 0x2a3444)
-    static let surfaceVariant = Color(hex: 0x323c4d)
-    /// Light ink for titles and accents on dark surfaces.
+    // MARK: Surfaces (back to front)
+
+    /// Recessed backdrop behind artboards, sheets, and the 3D book.
+    static let canvasBackground = Color(nsColor: canvasNSColor)
+    /// Page background for Home, Calculators, Guides, Libraries, Materials — matches the inspector.
+    static let contentBackground = Color(nsColor: .textBackgroundColor)
+    /// Grouped container on a content page (project rows, cards, calculator panels).
+    static let cardBackground = Color.primary.opacity(0.045)
+    /// Raised control or chip inside a card (segmented pickers, badges).
+    static let raisedFill = Color.primary.opacity(0.09)
+    /// Hairlines and card borders.
+    static let separator = Color(nsColor: .separatorColor)
+
+    /// AppKit form of `canvasBackground` for SceneKit and other NSView hosts.
+    static var canvasNSColor: NSColor { .underPageBackgroundColor }
+
+    // MARK: Text
+
+    static let textPrimary = Color(nsColor: .labelColor)
+    static let textSecondary = Color(nsColor: .secondaryLabelColor)
+    static let textTertiary = Color(nsColor: .tertiaryLabelColor)
+
+    // MARK: Brand accents
+
+    /// Ink blue: titles, selection tint, brand mark.
     static let primary = Color(hex: 0xc5d7f5)
-    static let primaryContainer = Color(hex: 0x2a3f5c)
-    static let primaryFixed = Color(hex: 0xd6e3ff)
+    /// Foil gold: the one call-to-action and stamp/foil highlights.
     static let secondary = Color(hex: 0xf0c94b)
-    static let secondaryContainer = Color(hex: 0x5c4a10)
-    static let tertiary = Color(hex: 0xe4e3db)
-    static let tertiaryFixed = Color(hex: 0x2a2b26)
-    static let onSurface = Color(hex: 0xe8eef7)
-    static let onSurfaceVariant = Color(hex: 0xa9b3c2)
-    static let outline = Color(hex: 0x7a8494)
-    static let outlineVariant = Color(hex: 0x3a4454)
+    /// Text drawn on top of `secondary`.
+    static let onSecondary = Color(hex: 0x1a1608)
     static let note = Color(red: 0.78, green: 0.68, blue: 0.42)
-    static let rule = Color.primary.opacity(0.12)
 
     static let gutter: CGFloat = 24
     static let marginDesktop: CGFloat = 48
@@ -83,6 +97,28 @@ enum ArtisanTheme {
             }
         }
         return .system(textStyle, design: .serif)
+    }
+}
+
+/// Page-level section label for content pages (Home, Libraries): a short rule and
+/// tracked small caps. Inspectors use `WorkbenchInspectorChrome.SectionTitle` instead.
+struct ContentSectionTitle: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Rectangle()
+                .fill(ArtisanTheme.separator.opacity(0.35))
+                .frame(width: 32, height: 1)
+            Text(title.uppercased())
+                .font(ArtisanTheme.labelFont)
+                .tracking(2.2)
+                .foregroundStyle(ArtisanTheme.textSecondary.opacity(0.46))
+        }
     }
 }
 

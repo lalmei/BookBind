@@ -166,9 +166,14 @@ final class ImpositionTests: XCTestCase {
         XCTAssertEqual(bled.width, 218)
         XCTAssertEqual(bled.height, 218)
 
+        // Marks sit outside the bleed: 3 pt gap + 12 pt mark + 2 pt slack per side.
         let marked = ImpositionService.spreadMediaSize(pageSize: page, bleed: 0, addCropMarks: true)
-        XCTAssertEqual(marked.width, 228)
-        XCTAssertEqual(marked.height, 228)
+        XCTAssertEqual(marked.width, 234)
+        XCTAssertEqual(marked.height, 234)
+
+        let bledAndMarked = ImpositionService.spreadMediaSize(pageSize: page, bleed: 9, addCropMarks: true)
+        XCTAssertEqual(bledAndMarked.width, 252)
+        XCTAssertEqual(bledAndMarked.height, 252)
     }
 
     func testCustomTrimSizeResolvesFromJob() {
@@ -252,5 +257,167 @@ final class ImpositionTests: XCTestCase {
         XCTAssertEqual(summary.totalSignatures, 8)
         XCTAssertEqual(summary.printSheetsRequired, 32)
         XCTAssertEqual(summary.sheetSizeLabel, "A3 Landscape")
+    }
+
+    func testMiniZine8PlanPadsToEightAndOneSheet() {
+        var job = BindingJob()
+        job.applyImpositionScheme(.miniZine8)
+        job.frontEndpapers = 0
+        job.backEndpapers = 0
+
+        let plan = ImpositionService.plan(contentPageCount: 5, job: job)
+        XCTAssertEqual(plan.padPages, 3)
+        XCTAssertEqual(plan.pagesPerSignature, 8)
+        XCTAssertEqual(plan.signatureCount, 1)
+        XCTAssertEqual(plan.printSheetsRequired, 1)
+        XCTAssertEqual(plan.impositionScheme, .miniZine8)
+    }
+
+    func testMiniZine8LayoutPageOrderAndCutGuide() {
+        let layout = ImpositionService.miniZine8Layout(template: .classicNested)
+        XCTAssertEqual(layout.columns, 4)
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertEqual(layout.cells.count, 8)
+
+        // Bottom row (PDF): 6,7,8,1
+        XCTAssertEqual(layout.cells.first { $0.column == 0 && $0.row == 0 }?.pageIndex, 5)
+        XCTAssertEqual(layout.cells.first { $0.column == 3 && $0.row == 0 }?.pageIndex, 0)
+        // Top row upside-down: 5,4,3,2
+        XCTAssertEqual(layout.cells.first { $0.column == 0 && $0.row == 1 }?.pageIndex, 4)
+        XCTAssertEqual(layout.cells.first { $0.column == 0 && $0.row == 1 }?.rotationDegrees, 180)
+
+        let stock = CGSize(width: 792, height: 612)
+        var job = BindingJob()
+        job.applyImpositionScheme(.miniZine8)
+        job.miniZine8Template = .classicNested
+        job.paperSize = .custom
+        job.customPageWidth = 792
+        job.customPageHeight = 612
+        let guided = ImpositionService.sheetLayout(for: job, stockSize: stock)
+        let cuts = guided.guides.filter { $0.kind == .cut }
+        XCTAssertEqual(cuts.count, 1)
+        XCTAssertTrue(guided.guides.contains { $0.kind == .fold })
+        let cut = cuts[0]
+        // Center slit: middle two columns only (cellW … 3*cellW at mid height).
+        XCTAssertEqual(cut.start.y, 306, accuracy: 0.01)
+        XCTAssertEqual(cut.end.y, 306, accuracy: 0.01)
+        XCTAssertEqual(cut.start.x, 198, accuracy: 0.01)
+        XCTAssertEqual(cut.end.x, 594, accuracy: 0.01)
+    }
+
+    func testMiniZine8AlternateTemplatesChangePageMapNotCut() {
+        let stock = CGSize(width: 792, height: 612)
+        for template in MiniZine8Template.allCases {
+            var job = BindingJob()
+            job.impositionScheme = .miniZine8
+            job.miniZine8Template = template
+            let layout = ImpositionService.sheetLayout(for: job, stockSize: stock)
+            XCTAssertEqual(layout.cells.count, 8, template.rawValue)
+            let top = template.topRowPages
+            let bottom = template.bottomRowPages
+            for col in 0..<4 {
+                XCTAssertEqual(
+                    layout.cells.first { $0.column == col && $0.row == 1 }?.pageIndex,
+                    top[col],
+                    "\(template.rawValue) top col \(col)"
+                )
+                XCTAssertEqual(
+                    layout.cells.first { $0.column == col && $0.row == 0 }?.pageIndex,
+                    bottom[col],
+                    "\(template.rawValue) bottom col \(col)"
+                )
+            }
+            let cuts = layout.guides.filter { $0.kind == .cut }
+            XCTAssertEqual(cuts.count, 1, template.rawValue)
+            XCTAssertEqual(cuts[0].start.x, 198, accuracy: 0.01)
+            XCTAssertEqual(cuts[0].end.x, 594, accuracy: 0.01)
+        }
+    }
+
+    func testMiniZine16CutTemplates() {
+        let stock = CGSize(width: 792, height: 612)
+        var cross = BindingJob()
+        cross.impositionScheme = .miniZine16
+        cross.miniZine16Template = .crossCut
+        let crossLayout = ImpositionService.sheetLayout(for: cross, stockSize: stock)
+        XCTAssertEqual(crossLayout.guides.filter { $0.kind == .cut }.count, 2)
+
+        var slits = BindingJob()
+        slits.impositionScheme = .miniZine16
+        slits.miniZine16Template = .horizontalSlits
+        let slitsLayout = ImpositionService.sheetLayout(for: slits, stockSize: stock)
+        XCTAssertEqual(slitsLayout.guides.filter { $0.kind == .cut }.count, 2)
+        XCTAssertTrue(slitsLayout.guides.filter { $0.kind == .cut }.allSatisfy { abs($0.start.y - $0.end.y) < 0.01 })
+    }
+
+    func testMiniZine8TrimDerivesFromLetterStock() {
+        var job = BindingJob()
+        job.applyImpositionScheme(.miniZine8)
+        job.paperSize = .custom
+        job.customPageWidth = 792
+        job.customPageHeight = 612
+        guard let trim = job.resolvedTrimSize else {
+            XCTFail("expected trim")
+            return
+        }
+        XCTAssertEqual(trim.width, 198, accuracy: 0.01)
+        XCTAssertEqual(trim.height, 306, accuracy: 0.01)
+        XCTAssertEqual(ImpositionService.printerSheetLabel(for: job, pageSize: trim), "US Letter Landscape")
+    }
+
+    func testMiniZine16AndAccordionPlans() {
+        var zine = BindingJob()
+        zine.applyImpositionScheme(.miniZine16)
+        zine.frontEndpapers = 0
+        zine.backEndpapers = 0
+        let zinePlan = ImpositionService.plan(contentPageCount: 10, job: zine)
+        XCTAssertEqual(zinePlan.pagesPerSignature, 16)
+        XCTAssertEqual(zinePlan.padPages, 6)
+        XCTAssertEqual(zinePlan.printSheetsRequired, 1)
+
+        var accordion = BindingJob()
+        accordion.applyImpositionScheme(.accordion)
+        accordion.accordionPanelCount = 6
+        accordion.frontEndpapers = 0
+        accordion.backEndpapers = 0
+        let accordionPlan = ImpositionService.plan(contentPageCount: 4, job: accordion)
+        XCTAssertEqual(accordionPlan.pagesPerSignature, 6)
+        XCTAssertEqual(accordionPlan.padPages, 2)
+        XCTAssertEqual(accordionPlan.printSheetsRequired, 1)
+    }
+
+    func testHalfFoldBookletUsesSaddleStitchFolio() {
+        var job = BindingJob()
+        job.applyImpositionScheme(.halfFoldBooklet)
+        XCTAssertEqual(job.bindingStyle, .saddleStitch)
+        XCTAssertTrue(job.impositionScheme.usesFolioImpose)
+        XCTAssertEqual(job.frontEndpapers, 0)
+
+        let plan = ImpositionService.plan(contentPageCount: 6, job: job)
+        XCTAssertEqual(plan.pagesPerSignature, 8)
+        XCTAssertEqual(plan.printSheetsRequired, 2)
+    }
+
+    func testImposeMiniZine8ProducesOneSheet() throws {
+        var job = BindingJob()
+        job.applyImpositionScheme(.miniZine8)
+        job.paperSize = .custom
+        job.customPageWidth = 792
+        job.customPageHeight = 612
+        job.showGuideMarks = true
+        job.frontEndpapers = 0
+        job.backEndpapers = 0
+
+        let block = PDFDocument()
+        let trim = job.resolvedTrimSize!
+        for _ in 0..<8 {
+            block.insert(PDFDocumentService.makeBlankPage(size: trim), at: block.pageCount)
+        }
+        let plan = ImpositionService.plan(contentPageCount: 8, job: job)
+        let imposed = try ImpositionService.impose(bookBlock: block, plan: plan, job: job)
+        XCTAssertEqual(imposed.pageCount, 1)
+        let media = imposed.page(at: 0)!.bounds(for: .mediaBox).size
+        XCTAssertEqual(media.width, 792, accuracy: 1)
+        XCTAssertEqual(media.height, 612, accuracy: 1)
     }
 }

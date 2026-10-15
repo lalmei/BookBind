@@ -16,9 +16,20 @@ final class BindingWorkspace: ObservableObject {
     @Published var statusMessage: String?
     @Published var errorMessage: String?
     @Published var showSignatureMap = false
+    @Published var showFoldGuide = false
+    /// True from an edit until the matching auto-bind lands; Export waits for a current preview.
+    @Published private(set) var isPreviewStale = false
+
+    /// Pause after the last edit before re-binding, so typing in a field binds once.
+    static let autoBindDelay: Duration = .milliseconds(600)
+    private var autoBindTask: Task<Void, Never>?
+    /// Bumped on every edit; a bind whose generation is outdated when it finishes is discarded.
+    private var bindGeneration = 0
 
     private let scopedAccess = SecurityScopedAccess()
     var onChange: (() -> Void)?
+    /// Project title printed in the slug line of imposed sheets.
+    var documentTitle = ""
 
     var totalSourcePages: Int {
         sources.reduce(0) { $0 + $1.pageCount }
@@ -32,12 +43,17 @@ final class BindingWorkspace: ObservableObject {
         assembledPageCount > 0 && !isWorking
     }
 
+    /// Export only what matches the current settings.
+    var canExport: Bool {
+        previewDocument != nil && !isPreviewStale && !isWorking
+    }
+
     /// Live imposition summary for the sidebar card.
     var impositionSummary: ImpositionSummary? {
         guard let plan else { return nil }
         let trim = job.resolvedTrimSize ?? sources.first?.pageSize ?? CGSize(width: 612, height: 792)
         return plan.impositionSummary(
-            sheetSizeLabel: ImpositionService.printerSheetLabel(pageSize: trim)
+            sheetSizeLabel: ImpositionService.printerSheetLabel(for: job, pageSize: trim)
         )
     }
 
@@ -62,14 +78,12 @@ final class BindingWorkspace: ObservableObject {
     func removeSource(_ source: SourceDocument) {
         sources.removeAll { $0.id == source.id }
         bookBlockItems.removeAll { $0.sourceID == source.id }
-        clearPreview()
         refreshPlan()
         onChange?()
     }
 
     func moveSource(from offsets: IndexSet, to offset: Int) {
         sources.move(fromOffsets: offsets, toOffset: offset)
-        clearPreview()
         refreshPlan()
         onChange?()
     }
@@ -85,7 +99,16 @@ final class BindingWorkspace: ObservableObject {
     }
 
     func addBlankPage() {
-        bookBlockItems.append(.blank())
+        addBlankPages(count: 1)
+    }
+
+    func addBlankPages(count: Int) {
+        let n = max(0, min(200, count))
+        guard n > 0 else { return }
+        for index in 0..<n {
+            let label = n == 1 ? "Blank page" : "Blank page \(index + 1)"
+            bookBlockItems.append(.blank(label: label))
+        }
         markChanged()
     }
 
@@ -160,12 +183,7 @@ final class BindingWorkspace: ObservableObject {
         markChanged()
     }
 
-    private func clearPreview() {
-        previewDocument = nil
-    }
-
     func markChanged() {
-        clearPreview()
         refreshPlan()
         onChange?()
     }
@@ -174,24 +192,51 @@ final class BindingWorkspace: ObservableObject {
         guard assembledPageCount > 0 else {
             plan = nil
             signatureMap = nil
+            cancelAutoBind()
+            previewDocument = nil
             return
         }
         let next = ImpositionService.plan(contentPageCount: assembledPageCount, job: job)
         plan = next
-        signatureMap = ImpositionService.signatureMap(for: next)
+        signatureMap = ImpositionService.signatureMap(for: next, job: job)
+        scheduleAutoBind()
     }
 
-    /// One-shot: merge → endpapers → decorate → impose → ready to export.
+    /// Every plan refresh means the imposed preview is out of date: bind again after a short pause.
+    /// The previous preview stays on screen until the new one lands, so edits don't flicker.
+    func scheduleAutoBind(after delay: Duration = BindingWorkspace.autoBindDelay) {
+        bindGeneration += 1
+        isPreviewStale = true
+        autoBindTask?.cancel()
+        autoBindTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.runBinding()
+        }
+    }
+
+    private func cancelAutoBind() {
+        autoBindTask?.cancel()
+        autoBindTask = nil
+        bindGeneration += 1
+        isPreviewStale = false
+        statusMessage = nil
+    }
+
+    /// Merge → endpapers → decorate → impose → ready to export. Runs automatically after edits.
     func runBinding() {
-        guard canBind else { return }
+        guard assembledPageCount > 0 else { return }
+        // A bind already in flight will notice its generation is stale and run again.
+        guard !isWorking else { return }
+        let generation = bindGeneration
         isWorking = true
-        errorMessage = nil
         statusMessage = "Binding…"
 
         let resolvedURLs = sources.map { $0.resolvedURL() }
         let endpaperURLs = [job.frontEndpaperArtwork, job.backEndpaperArtwork]
             .compactMap { $0?.resolvedURL() }
         let jobSnapshot = job
+        let titleSnapshot = documentTitle
         let sourcesSnapshot = sources
         let itemsSnapshot = bookBlockItems
         scopedAccess.start(urls: resolvedURLs + endpaperURLs)
@@ -214,7 +259,7 @@ final class BindingWorkspace: ObservableObject {
                     contentPageCount: assembled.pageCount,
                     job: jobSnapshot
                 )
-                let map = ImpositionService.signatureMap(for: plan)
+                let map = ImpositionService.signatureMap(for: plan, job: jobSnapshot)
 
                 let targetSize = jobSnapshot.resolvedTrimSize
                 let bookBlock = PDFDocumentService.buildBookBlock(
@@ -239,36 +284,42 @@ final class BindingWorkspace: ObservableObject {
                 let imposed = try ImpositionService.impose(
                     bookBlock: decorated,
                     plan: plan,
-                    style: jobSnapshot.bindingStyle,
-                    addCropMarks: jobSnapshot.addCropMarks,
-                    showGuideMarks: jobSnapshot.showGuideMarks,
-                    showStitchHoleMarks: jobSnapshot.showStitchHoleMarks,
-                    stitchHoleCount: jobSnapshot.stitchHoleCount,
-                    creepPoints: jobSnapshot.creepPoints,
-                    bleedPoints: jobSnapshot.bleedPoints
+                    job: jobSnapshot,
+                    slugTitle: titleSnapshot
                 )
 
                 await MainActor.run {
+                    self.isWorking = false
+                    // Settings changed while binding: drop this result and bind the latest.
+                    guard generation == self.bindGeneration else {
+                        self.runBinding()
+                        return
+                    }
                     self.plan = plan
                     self.signatureMap = map
                     self.previewDocument = imposed
+                    self.isPreviewStale = false
                     self.statusMessage =
-                        "Ready — assembled, decorated, imposed · \(plan.sheetCount) print sheets · \(plan.summary). \(jobSnapshot.duplexHint)"
-                    self.isWorking = false
-                    self.onChange?()
+                        "Ready · \(plan.sheetCount) print sheets · \(plan.summary). \(jobSnapshot.duplexHint)"
                 }
             } catch {
                 await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.statusMessage = nil
                     self.isWorking = false
+                    guard generation == self.bindGeneration else {
+                        self.runBinding()
+                        return
+                    }
+                    // Automatic: report in the status bar rather than interrupting with an alert.
+                    self.isPreviewStale = false
+                    self.previewDocument = nil
+                    self.statusMessage = "Couldn't bind — \(error.localizedDescription)"
                 }
             }
         }
     }
 
     func exportBoundPDF() {
-        guard let document = previewDocument else { return }
+        guard canExport, let document = previewDocument else { return }
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]

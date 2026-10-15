@@ -1,13 +1,19 @@
 import AppKit
 import SwiftUI
 
-/// Collapse / expand control for workbench inspectors.
-/// Uses adaptive label colors so shell `.tint` (navy/blue) cannot wash out the icon.
+/// Shared trailing-inspector chrome for every workbench tool.
+///
+/// Visibility is one app-wide setting (like Pages/Keynote) toggled from the window
+/// toolbar or View ▸ Show Inspector (⌥⌘I), so switching tools never moves the control.
 enum WorkbenchInspectorChrome {
-    static let collapsedRailWidth: CGFloat = 32
+    static let visibilityKey = "workbenchInspectorVisible"
+    static let minWidth: CGFloat = 280
+    static let idealWidth: CGFloat = 320
+    static let maxWidth: CGFloat = 380
 
-    struct ToggleButton: View {
-        @Binding var isVisible: Bool
+    /// Toolbar button that shows or hides the inspector; place last in `.primaryAction`.
+    struct ToolbarToggle: View {
+        @AppStorage(WorkbenchInspectorChrome.visibilityKey) private var isVisible = true
 
         var body: some View {
             Button {
@@ -15,51 +21,44 @@ enum WorkbenchInspectorChrome {
                     isVisible.toggle()
                 }
             } label: {
-                Image(systemName: "sidebar.trailing")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(nsColor: .labelColor))
-                    .frame(width: 28, height: 24)
-                    .contentShape(Rectangle())
+                Label(isVisible ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.trailing")
             }
-            .buttonStyle(.plain)
-            .help(isVisible ? "Hide inspector" : "Show inspector")
-            .accessibilityLabel(isVisible ? "Hide inspector" : "Show inspector")
+            .help(isVisible ? "Hide Inspector (⌥⌘I)" : "Show Inspector (⌥⌘I)")
         }
     }
 
-    /// Narrow edge strip when the inspector is collapsed; the reopen icon stays
-    /// near the same top-right location as the inspector header collapse button.
-    struct CollapsedRail: View {
-        @Binding var isVisible: Bool
-        var title: String = "Inspector"
+    /// Scrolling inspector column with consistent padding, width, and background.
+    struct Panel<Content: View>: View {
+        @ViewBuilder var content: () -> Content
 
         var body: some View {
-            VStack {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isVisible = true
-                    }
-                } label: {
-                    Image(systemName: "sidebar.trailing")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(nsColor: .labelColor))
-                        .frame(width: 28, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Show \(title.lowercased())")
-                .accessibilityLabel("Show \(title.lowercased())")
-                .padding(.top, 16)
+            ScrollView {
+                content()
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(
+                minWidth: WorkbenchInspectorChrome.minWidth,
+                idealWidth: WorkbenchInspectorChrome.idealWidth,
+                maxWidth: WorkbenchInspectorChrome.maxWidth
+            )
+            .background(.background)
+        }
+    }
 
-                Spacer(minLength: 0)
-            }
-            .frame(width: WorkbenchInspectorChrome.collapsedRailWidth)
-            .background(Color(nsColor: .windowBackgroundColor))
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(Color(nsColor: .separatorColor))
-                    .frame(width: 1)
-            }
+    /// Small-caps section label used by every inspector section.
+    struct SectionTitle: View {
+        let title: String
+
+        init(_ title: String) {
+            self.title = title
+        }
+
+        var body: some View {
+            Text(title.uppercased())
+                .font(ArtisanTheme.labelFont)
+                .tracking(0.6)
+                .foregroundStyle(.secondary)
         }
     }
 }
